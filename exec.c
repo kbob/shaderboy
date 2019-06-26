@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "exec.h"
 
 #include <pthread.h>
@@ -15,6 +16,7 @@ struct exec {
     LEDs_context   *leds;
 
     bool            running;
+    bool            shutdown;
     unsigned        running_count;
     pthread_cond_t  running_cond;
     pthread_mutex_t running_lock;
@@ -33,8 +35,9 @@ struct exec {
     LED_cmd        *cmdbuffers[CBQ_SIZE];
 };
 
-static void thread_started(exec *ex)
+static void thread_started(exec *ex, const char *name)
 {
+    pthread_setname_np(pthread_self(), name);
     pthread_mutex_lock(&ex->running_lock);
     ex->running_count++;
     pthread_mutex_unlock(&ex->running_lock);
@@ -49,15 +52,25 @@ static void thread_finished(exec *ex)
 
 static bool check_running(exec *ex)
 {
+    bool go = true;
     pthread_mutex_lock(&ex->running_lock);
-    while (!ex->running) {
+    while (!ex->running && !ex->shutdown) {
         ex->running_count--;
         pthread_cond_broadcast(&ex->running_cond);
         pthread_cond_wait(&ex->running_cond, &ex->running_lock);
         ex->running_count++;
     }
+    go = !ex->shutdown;
     pthread_mutex_unlock(&ex->running_lock);
-    return true;
+    return go;
+}
+
+static void shutdown(exec *ex)
+{
+    pthread_mutex_lock(&ex->running_lock);
+    ex->shutdown = true;
+    pthread_mutex_unlock(&ex->running_lock);
+    pthread_cond_broadcast(&ex->running_cond);
 }
 
 static prog *get_prog(exec *ex)
@@ -78,7 +91,7 @@ static void set_prog(exec *ex, prog *pp)
 static void *render_thread_main(void *user_data)
 {
     exec *ex = user_data;
-    thread_started(ex);
+    thread_started(ex, "SHD Render");
 
     render_state *rs = render_init(ex->bcm);
     while (check_running(ex)) {
@@ -97,7 +110,7 @@ static void *render_thread_main(void *user_data)
 static void *cmd_thread_main(void *user_data)
 {
     exec *ex = user_data;
-    thread_started(ex);
+    thread_started(ex, "SHD cmd");
     while (check_running(ex)) {
         size_t cb_idx = queue_acquire_empty(ex->cmdbuffer_queue);
         size_t fb_idx = queue_acquire_full(ex->framebuffer_queue);
@@ -116,7 +129,7 @@ static void *cmd_thread_main(void *user_data)
 static void *output_thread_main(void *user_data)
 {
     exec *ex = user_data;
-    thread_started(ex);
+    thread_started(ex, "SHD Output");
     while (check_running(ex)) {
         size_t index = queue_acquire_full(ex->cmdbuffer_queue);
         LED_cmd *cmds = ex->cmdbuffers[index];
@@ -175,16 +188,18 @@ FAIL:
 
 void destroy_exec(exec *ex)
 {
+    shutdown(ex);
+
     if (ex->output_thread) {
-        pthread_cancel(ex->output_thread);
+        // pthread_cancel(ex->output_thread);
         pthread_join(ex->output_thread, NULL);
     }
     if (ex->cmd_thread) {
-        pthread_cancel(ex->cmd_thread);
+        // pthread_cancel(ex->cmd_thread);
         pthread_join(ex->cmd_thread, NULL);
     }
     if (ex->render_thread) {
-        pthread_cancel(ex->render_thread);
+        // pthread_cancel(ex->render_thread);
         pthread_join(ex->render_thread, NULL);
     }
 
