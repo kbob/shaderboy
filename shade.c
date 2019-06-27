@@ -12,6 +12,14 @@
 EXPORT const int SHD_SHADER_VERTEX_VALUE = SHD_SHADER_VERTEX;
 EXPORT const int SHD_SHADER_FRAGMENT_VALUE = SHD_SHADER_FRAGMENT;
 
+EXPORT const int SHD_PREDEFINED_RESOLUTION_VALUE = SHD_PREDEFINED_RESOLUTION;
+EXPORT const int SHD_PREDEFINED_PLAY_TIME_VALUE = SHD_PREDEFINED_PLAY_TIME;
+EXPORT const int SHD_PREDEFINED_NOISE_SMALL_VALUE = SHD_PREDEFINED_NOISE_SMALL;
+EXPORT const int SHD_PREDEFINED_NOISE_MEDIUM_VALUE =
+    SHD_PREDEFINED_NOISE_MEDIUM;
+EXPORT const int SHD_PREDEFINED_BACK_BUFFER_VALUE = SHD_PREDEFINED_BACK_BUFFER;
+EXPORT const int SHD_PREDEFINED_IMU_VALUE = SHD_PREDEFINED_IMU;
+
 static bcm_context  *the_bcm;
 static EGL_context  *the_EGL;
 static LEDs_context *the_LEDs;
@@ -100,4 +108,22 @@ EXPORT void shd_prog_attach_shader(shd_prog        *prog,
         break;
     }
     prog_attach_shader(prog, ptype, source);
+}
+
+EXPORT void shd_prog_attach_predefined(shd_prog *pp,
+                                       const char *name,
+                                       shd_predefined predef)
+{
+    predefined pd;
+    switch (predef) {
+    case SHD_PREDEFINED_RESOLUTION:
+        pd = PD_RESOLUTION;
+        break;
+    case SHD_PREDEFINED_PLAY_TIME:
+        pd = PD_PLAY_TIME;
+        break;
+    default:
+        return;
+    }
+    prog_attach_predefined(pp, name, pd);
 }

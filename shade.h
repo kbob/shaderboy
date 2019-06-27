@@ -11,10 +11,12 @@ typedef enum shd_shader_type {
 } shd_shader_type;
 
 typedef enum shd_predefined {
-    SHD_NOISE_SMALL,
-    SHD_NOISE_MEDIUM,
-    SHD_BACK_BUFFER,
-    SHD_IMU,
+    SHD_PREDEFINED_RESOLUTION,
+    SHD_PREDEFINED_PLAY_TIME,
+    SHD_PREDEFINED_NOISE_SMALL,
+    SHD_PREDEFINED_NOISE_MEDIUM,
+    SHD_PREDEFINED_BACK_BUFFER,
+    SHD_PREDEFINED_IMU,
 } shd_predefined;
 
 // These are integer constants matching the enum values above.
@@ -22,10 +24,12 @@ typedef enum shd_predefined {
 extern const int SHD_SHADER_VERTEX_VALUE;
 extern const int SHD_SHADER_FRAGMENT_VALUE;
 
-extern const int SHD_NOISE_SMALL_VALUE;
-extern const int SHD_NOISE_MEDIUM_VALUE;
-extern const int SHD_NOISE_BACK_BUFFER_VALUE;
-extern const int SHD_IMU_VALUE;
+extern const int SHD_PREDEFINED_RESOLUTION_VALUE;
+extern const int SHD_PREDEFINED_PLAY_TIME_VALUE;
+extern const int SHD_PREDEFINED_NOISE_SMALL_VALUE;
+extern const int SHD_PREDEFINED_NOISE_MEDIUM_VALUE;
+extern const int SHD_PREDEFINED_BACK_BUFFER_VALUE;
+extern const int SHD_PREDEFINED_IMU_VALUE;
 
 typedef struct shd_prog shd_prog;
 

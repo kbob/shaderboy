@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import ctypes
+from ctypes import c_int, c_char_p, c_void_p
 import time
 
 vertex_shader_source = '''
@@ -122,30 +123,77 @@ void main() {
 }
 '''
 
+fragment_shader_source = '''
+    uniform float iTime;
+    uniform vec3 iResolution;
+    void mainImage( out vec4 fragColor, in vec2 fragCoord )
+    {
+        // Normalized pixel coordinates (from 0 to 1)
+        vec2 uv = fragCoord/iResolution.xy;
+        // vec2 uv = fragCoord/vec2(768.0, 128.0);
+
+        // Time varying pixel color
+        vec3 col = 0.5 + 0.5*cos(iTime + uv.xyx+vec3(0,2,4));
+
+        // Output to screen
+        fragColor = vec4(col, 1.0);
+    }
+
+    void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        mainImage(gl_FragColor, gl_FragCoord.xy);
+        gl_FragColor.a = 1.0;
+    }
+'''
+
 shade = ctypes.cdll.LoadLibrary('./libshade.so')
 
-VERT = ctypes.c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
-FRAG = ctypes.c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
+use_prog = shade.shd_use_prog
+use_prog.argtypes = (c_void_p, )
+
+create_prog = shade.shd_create_prog
+create_prog.restype = c_void_p
+
+destroy_prog = shade.shd_destroy_prog
+# destroy_prog.argtypes = (c_void_p, )
+
+prog_is_okay = shade.shd_prog_is_okay
+# prog_is_okay.argtypes = (c_void_p, )
+
+prog_info_log = shade.shd_prog_info_log
+prog_info_log.argstypes = (c_void_p, )
+prog_info_log.restype = c_char_p
+
+prog_attach_shader = shade.shd_prog_attach_shader
+prog_attach_shader.argtypes = (c_void_p, c_int, c_char_p)
+prog_attach_shader.argtypes = (c_int, c_int, c_char_p)
+
+prog_attach_predefined = shade.shd_prog_attach_predefined
+prog_attach_predefined.argtypes = (c_int, c_char_p, c_int)
+
+VERT = c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
+FRAG = c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
+
+RESOLUTION = c_int.in_dll(shade, 'SHD_PREDEFINED_RESOLUTION_VALUE')
+PLAY_TIME = c_int.in_dll(shade, 'SHD_PREDEFINED_PLAY_TIME_VALUE')
 
 LEDS_WIDTH = 6 * 64
 LEDS_HEIGHT = 64
 
 shade.shd_init(LEDS_WIDTH, LEDS_HEIGHT)
 
-prog = shade.shd_create_prog()
-prog_attach_shader = shade.shd_prog_attach_shader
-prog_attach_shader.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_char_p)
+prog = create_prog()
 prog_attach_shader(prog, VERT, vertex_shader_source.encode('ascii'))
 prog_attach_shader(prog, FRAG, fragment_shader_source.encode('ascii'))
+prog_attach_predefined(prog, b'iResolution', RESOLUTION)
+prog_attach_predefined(prog, b"iTime", PLAY_TIME)
 if not shade.shd_prog_is_okay(prog):
-    prog_info_log = shade.shd_prog_info_log
-    prog_info_log.restype = ctypes.c_char_p
     print(prog_info_log(prog))
     exit()
 assert shade.shd_prog_is_okay(prog)
 shade.shd_use_prog(prog)
 
 shade.shd_start()
-time.sleep(1)
+time.sleep(1000)
 shade.shd_stop()
 shade.shd_deinit()

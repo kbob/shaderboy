@@ -9,11 +9,19 @@
 
 #include <GLES2/gl2.h>
 
+typedef struct predefined_info {
+    char       *name;
+    predefined  value;
+} predefined_info;
+
 struct shd_prog {
-    int  id;
-    char *vert_shader_source;
-    char *frag_shader_source;
-    char *info_log;
+    int              id;
+    char            *vert_shader_source;
+    char            *frag_shader_source;
+    char            *info_log;
+    size_t           predef_count;
+    size_t           predef_alloc;
+    predefined_info *predefs;
 };
 
 static bool shader_is_ok(GLuint shader)
@@ -36,12 +44,34 @@ void destroy_prog(prog *pp)
     free(pp->vert_shader_source);
     free(pp->frag_shader_source);
     free(pp->info_log);
+    for (size_t i = 0; i < pp->predef_count; i++)
+        free(pp->predefs[i].name);
+    free(pp->predefs);
     free(pp);
 }
 
 int prog_id(const prog *pp)
 {
     return pp->id;
+}
+
+size_t prog_predefined_count(const prog *pp)
+{
+    return pp->predef_count;
+}
+
+const char *prog_predefined_name(const prog *pp, size_t index)
+{
+    if (index < pp->predef_count)
+        return pp->predefs[index].name;
+    return NULL;
+}
+
+predefined prog_predefined_value(const prog *pp, size_t index)
+{
+    if (index < pp->predef_count)
+        return pp->predefs[index].value;
+    return PD_UNKNOWN;
 }
 
 bool prog_is_okay(prog *pp)
@@ -77,6 +107,18 @@ void prog_attach_shader(prog *pp, shader_type type, const char *source)
             asprintf(&pp->info_log, "unknown shader type %d", type);
         return;
     }
+}
+
+void prog_attach_predefined(prog *pp, const char *name, predefined value)
+{
+    size_t n = pp->predef_count;
+    if (pp->predef_alloc <= n) {
+        size_t new_alloc = 2 * n + 10;
+        pp->predefs = realloc(pp->predefs, new_alloc * sizeof *pp->predefs);
+    }
+    pp->predefs[n].name = strdup(name);
+    pp->predefs[n].value = value;
+    pp->predef_count++;
 }
 
 static GLuint create_shader(prog *pp, GLenum type, const char *source)

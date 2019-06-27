@@ -104,12 +104,6 @@ void LEDs_create_cmds(LEDs_context *ctx,
 {
     size_t fb_row_pitch = ctx->framebuffer_width;
     size_t fb_offset    = ctx->framebuffer_offset;
-    {
-        static int o = 300 - 128;
-        fb_offset = 400 * o;
-        if (++o >= 300 - 64)
-            o = 300 - 128;
-    }
     size_t row_size     = ctx->led_width * sizeof (LED_pixel);
     size_t row_count    = ctx->led_height;
     size_t cmd_idx      = 0;
