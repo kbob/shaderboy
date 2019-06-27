@@ -21,7 +21,7 @@ struct exec {
     pthread_cond_t  running_cond;
     pthread_mutex_t running_lock;
 
-    prog           *prog;
+    const prog     *prog;
     pthread_mutex_t prog_lock;
 
     pthread_t       render_thread;
@@ -73,15 +73,15 @@ static void shutdown(exec *ex)
     pthread_cond_broadcast(&ex->running_cond);
 }
 
-static prog *get_prog(exec *ex)
+static const prog *get_prog(exec *ex)
 {
     pthread_mutex_lock(&ex->prog_lock);
-    prog *pp = ex->prog;
+    const prog *pp = ex->prog;
     pthread_mutex_unlock(&ex->prog_lock);
     return pp;
 }
 
-static void set_prog(exec *ex, prog *pp)
+static void set_prog(exec *ex, const prog *pp)
 {
     pthread_mutex_lock(&ex->prog_lock);
     ex->prog = pp;
@@ -95,7 +95,7 @@ static void *render_thread_main(void *user_data)
 
     render_state *rs = render_init(ex->bcm);
     while (check_running(ex)) {
-        prog *pp = get_prog(ex);
+        const prog *pp = get_prog(ex);
         render_frame(rs, pp);
         size_t index = queue_acquire_empty(ex->framebuffer_queue);
         LED_pixel *pixels = ex->framebuffers[index];
@@ -242,7 +242,7 @@ void exec_stop(exec *ex)
     pthread_mutex_unlock(&ex->running_lock);
 }
 
-void exec_use_prog(exec *ex, prog *pp)
+void exec_use_prog(exec *ex, const prog *pp)
 {
     set_prog(ex, pp);
 }

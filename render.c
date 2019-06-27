@@ -69,16 +69,19 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
             rs->pd_map[i].index = index;
             rs->pd_map[i].value = value;
             switch (value) {
+
             case PD_RESOLUTION:
                 glUniform3f(index,
-                            (GLfloat)bcm_get_surface_width(rs->bcm),
-                            (GLfloat)bcm_get_surface_height(rs->bcm),
+                            (GLfloat)768.0,
+                            (GLfloat)128.0,
                             (GLfloat)1.0);
                 break;
+
             case PD_PLAY_TIME:
                 clock_gettime(CLOCK_MONOTONIC, &rs->time_zero);
                 glUniform1f(index, 0.0);
                 break;
+
             default:
                 break;
             }
@@ -86,6 +89,7 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
     }
     for (size_t i = 0; i < rs->pd_count; i++) {
         switch (rs->pd_map[i].value) {
+
         case PD_PLAY_TIME:
             if (!new_prog) {
                 struct timespec now;
@@ -95,6 +99,7 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
                 glUniform1f(rs->pd_map[i].index, t);
             }
             break;
+
         default:
             break;
         }
@@ -107,7 +112,7 @@ void render_frame(render_state *rs, const prog *pp)
     if (new_prog) {
         rs->prog_id = prog_id(pp);
         glDeleteProgram(rs->prog);
-        rs->prog = prog_instantiate((prog *)pp);
+        rs->prog = prog_instantiate((prog *)pp, NULL);
         glUseProgram(rs->prog);
         rs->vert_index = glGetAttribLocation(rs->prog, "vert");
         glVertexAttribPointer(rs->vert_index,

@@ -163,16 +163,16 @@ void deinit_EGL(EGL_context *ctx)
                        EGL_NO_SURFACE,
                        EGL_NO_SURFACE,
                        EGL_NO_CONTEXT) != EGL_TRUE) {
-        fprintf(stderr, "MakeCUrrent failed\n");
+        // fprintf(stderr, "MakeCUrrent failed\n");
     }
     if (eglDestroySurface(ctx->display, ctx->surface) != EGL_TRUE) {
-        fprintf(stderr, "eglDestroySurface failed\n");
+        // fprintf(stderr, "eglDestroySurface failed\n");
     }
     if (eglDestroyContext(ctx->display, ctx->context) != EGL_TRUE) {
-        fprintf(stderr, "eglDestroyContext failed\n");
+        // fprintf(stderr, "eglDestroyContext failed\n");
     }
     if (eglTerminate(ctx->display) != EGL_TRUE) {
-        fprintf(stderr, "eglTerminate failed\n");
+        // fprintf(stderr, "eglTerminate failed\n");
     }
     free(ctx);
 }

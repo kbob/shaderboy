@@ -43,18 +43,18 @@ extern void        shd_use_prog(shd_prog *);
 
 extern shd_prog   *shd_create_prog(void);
 extern void        shd_destroy_prog(shd_prog *);
-extern bool        shd_prog_is_okay(shd_prog *);
-extern const char *shd_prog_info_log(const shd_prog *);
-extern void        shd_prog_attach_shader(shd_prog *,
+extern bool        shd_prog_is_okay(const shd_prog       *,
+                                    char                **info_log);
+extern bool        shd_prog_attach_shader(shd_prog       *,
                                           shd_shader_type type,
                                           const char      *source);
-extern void        shd_prog_attach_image(shd_prog *,
-                                         const char *name,
-                                         size_t width,
-                                         size_t height,
-                                         uint32_t *values);
-extern void        shd_prog_attach_predefined(shd_prog *,
-                                              const char *name,
+extern bool        shd_prog_attach_image(shd_prog         *,
+                                         const char       *name,
+                                         size_t            width,
+                                         size_t            height,
+                                         uint32_t         *values);
+extern bool        shd_prog_attach_predefined(shd_prog    *,
+                                              const char  *name,
                                               shd_predefined);
 
 #endif /* !SHADE_included */

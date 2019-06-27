@@ -22,14 +22,13 @@ typedef struct shd_prog prog;
 
 extern prog       *create_prog(void);
 extern void        destroy_prog(prog *);
-extern bool        prog_is_okay(prog *);
-extern const char *prog_info_log(const prog *);
-extern void        prog_attach_shader(prog *, shader_type, const char *source);
-extern void        prog_attach_predefined(prog *,
+extern bool        prog_is_okay(const prog *, char **info_log);
+extern bool        prog_attach_shader(prog *, shader_type, const char *source);
+extern bool        prog_attach_predefined(prog *,
                                           const char *name,
                                           predefined value);
 
-extern GLuint      prog_instantiate(prog *);
+extern GLuint      prog_instantiate(const prog *, char **info_log);
 extern int         prog_id(const prog *);
 extern size_t      prog_predefined_count(const prog *);
 extern const char *prog_predefined_name(const prog *, size_t index);

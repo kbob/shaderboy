@@ -2,6 +2,7 @@
 #include "prog.h"
 
 #include <assert.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +19,6 @@ struct shd_prog {
     int              id;
     char            *vert_shader_source;
     char            *frag_shader_source;
-    char            *info_log;
     size_t           predef_count;
     size_t           predef_alloc;
     predefined_info *predefs;
@@ -43,7 +43,6 @@ void destroy_prog(prog *pp)
 {
     free(pp->vert_shader_source);
     free(pp->frag_shader_source);
-    free(pp->info_log);
     for (size_t i = 0; i < pp->predef_count; i++)
         free(pp->predefs[i].name);
     free(pp->predefs);
@@ -74,42 +73,42 @@ predefined prog_predefined_value(const prog *pp, size_t index)
     return PD_UNKNOWN;
 }
 
-bool prog_is_okay(prog *pp)
+bool prog_is_okay(const prog *pp, char **info_log)
 {
-    if (pp->info_log)
-        return false;
-    GLuint prog = prog_instantiate(pp);
+    GLuint prog = prog_instantiate(pp, info_log);
+
+    // enumerate attributes.  Verify that "vert" is the only one.
+
+    // enumerate uniforms.  Verify they are all accounted for.
+    // for (name, value) in predefined:
+    //     glGetUniformLocation(prog, name)
+    //     glGetActiveUniform(...)
+    //     check type, size against value.
+
     glDeleteProgram(prog);
     return prog != 0;
 }
 
-const char *prog_info_log(const prog *pp)
-{
-    return pp->info_log;
-}
-
-void prog_attach_shader(prog *pp, shader_type type, const char *source)
+bool prog_attach_shader(prog *pp, shader_type type, const char *source)
 {
     switch (type) {
 
     case PST_VERTEX:
         free(pp->vert_shader_source);
         pp->vert_shader_source = strdup(source);
-        break;
+        return true;
 
     case PST_FRAGMENT:
         free(pp->frag_shader_source);
         pp->frag_shader_source = strdup(source);
-        break;
+        return true;
 
     default:
-        if (!pp->info_log)
-            asprintf(&pp->info_log, "unknown shader type %d", type);
-        return;
+        return false;
     }
 }
 
-void prog_attach_predefined(prog *pp, const char *name, predefined value)
+bool prog_attach_predefined(prog *pp, const char *name, predefined value)
 {
     size_t n = pp->predef_count;
     if (pp->predef_alloc <= n) {
@@ -119,22 +118,66 @@ void prog_attach_predefined(prog *pp, const char *name, predefined value)
     pp->predefs[n].name = strdup(name);
     pp->predefs[n].value = value;
     pp->predef_count++;
+    return true;
 }
 
-static GLuint create_shader(prog *pp, GLenum type, const char *source)
+static const char *GL_error_str(GLenum err)
+{
+    switch (err) {
+
+    case GL_NO_ERROR:
+        return "GL_NO_ERROR";
+
+    case GL_INVALID_ENUM:
+        return "GL_INVALID_ENUM";
+
+    case GL_INVALID_VALUE:
+        return "GL_INVALID_VALUE";
+
+    case GL_INVALID_OPERATION:
+        return "GL_INVALID_OPERATION";
+
+    case GL_OUT_OF_MEMORY:
+        return "GL_OUT_OF_MEMORY";
+
+    case GL_INVALID_FRAMEBUFFER_OPERATION:
+        return "GL_INVALID_FRAMEBUFFER_OPERATION";
+
+    default:
+        return "unknown GL error";
+    }
+}
+
+static void log_info(char **info_log, char *fmt, ...)
+{
+    if (!info_log)
+        return;
+    va_list ap;
+    va_start(ap, fmt);
+    vasprintf(info_log, fmt, ap);
+    va_end(ap);
+}
+
+static GLuint create_shader(const prog *pp,
+                            GLenum type,
+                            const char *source,
+                            char **info_log)
 {
     GLuint s = glCreateShader(type);
-    if (s == 0)
+    if (s == 0) {
+        log_info(info_log,
+                 "glCreateShader failed: %s", GL_error_str(glGetError()));
         return 0;
+    }
     GLint length = -1;
     glShaderSource(s, 1, &source, &length);
     glCompileShader(s);
-    if (!shader_is_ok(s)) {
+    if (info_log && !shader_is_ok(s)) {
         GLint info_len;
         glGetShaderiv(s, GL_INFO_LOG_LENGTH, &info_len);
         if (info_len > 0) {
-            pp->info_log = malloc(info_len);
-            glGetShaderInfoLog(s, info_len, NULL, pp->info_log);
+            *info_log = malloc(info_len);
+            glGetShaderInfoLog(s, info_len, NULL, *info_log);
         }
         glDeleteShader(s);
         return 0;
@@ -142,22 +185,23 @@ static GLuint create_shader(prog *pp, GLenum type, const char *source)
     return s;
 }
 
-GLuint prog_instantiate(prog *pp)
+GLuint prog_instantiate(const prog *pp, char **info_log)
 {
     GLuint v = 0, f = 0, p = 0;
 
-    if (pp->info_log)
-        return 0;
-    v = create_shader(pp, GL_VERTEX_SHADER, pp->vert_shader_source);
+    v = create_shader(pp, GL_VERTEX_SHADER, pp->vert_shader_source, info_log);
     if (!v)
         goto FAIL;
-    f = create_shader(pp, GL_FRAGMENT_SHADER, pp->frag_shader_source);
+    f = create_shader(pp,
+                      GL_FRAGMENT_SHADER,
+                      pp->frag_shader_source,
+                      info_log);
     if (!f)
         goto FAIL;
     p = glCreateProgram();
     if (!p) {
-        // glGetError
-        pp->info_log = strdup("glCreateProgram failed");
+        log_info(info_log,
+                 "glCreateProgram failed: %s", GL_error_str(glGetError()));
         goto FAIL;
     }
 
@@ -165,16 +209,17 @@ GLuint prog_instantiate(prog *pp)
 
     glAttachShader(p, v);
     glAttachShader(p, f);
-    // glBindAttribLocation(p, 0, "vert");
     glLinkProgram(p);
     GLint link_status;
     glGetProgramiv(p, GL_LINK_STATUS, &link_status);
     if (link_status != GL_TRUE) {
-        GLint info_len;
-        glGetProgramiv(p, GL_INFO_LOG_LENGTH, &info_len);
-        if (info_len > 0) {
-            pp->info_log = malloc(info_len);
-            glGetProgramInfoLog(p, info_len, NULL, pp->info_log);
+        if (info_log) {
+            GLint info_len;
+            glGetProgramiv(p, GL_INFO_LOG_LENGTH, &info_len);
+            if (info_len > 0) {
+                *info_log = malloc(info_len);
+                glGetProgramInfoLog(p, info_len, NULL, *info_log);
+            }
         }
         goto FAIL;
     }
@@ -185,11 +230,13 @@ GLuint prog_instantiate(prog *pp)
     GLint valid_status;
     glGetProgramiv(p, GL_VALIDATE_STATUS, &valid_status);
     if (valid_status != GL_TRUE) {
-        GLint info_len;
-        glGetProgramiv(p, GL_INFO_LOG_LENGTH, &info_len);
-        if (info_len > 0) {
-            pp->info_log = malloc(info_len);
-            glGetProgramInfoLog(p, info_len, NULL, pp->info_log);
+        if (info_log) {
+            GLint info_len;
+            glGetProgramiv(p, GL_INFO_LOG_LENGTH, &info_len);
+            if (info_len > 0) {
+                *info_log = malloc(info_len);
+                glGetProgramInfoLog(p, info_len, NULL, *info_log);
+            }
         }
         goto FAIL;
     }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import ctypes
-from ctypes import c_int, c_char_p, c_void_p
+from ctypes import byref, c_int, c_char, c_char_p, c_void_p, POINTER
 import time
 
 vertex_shader_source = '''
@@ -10,117 +10,6 @@ vertex_shader_source = '''
     void main(void) {
         gl_Position = vec4(vert, 1.0);
     }
-'''
-
-fragment_shader_source = '''
-uniform vec3 iResolution;
-uniform float iTime;
-uniform float iTimeDelta;
-uniform float iFrame;
-uniform float iChannelTime[4];
-uniform vec4 iMouse;
-uniform vec4 iDate;
-uniform float iSampleRate;
-uniform vec3 iChannelResolution[4];
-const float PI = 3.141592;
-const float EPSILON = 0.0001;
-
-// Maps 2D output image space to 3D cube space.
-//
-// The returned coordinates are in the range of (-.5, .5).
-vec3 cube_map_to_3d(vec2 pos) {
-    vec3 p = vec3(0.0);
-    if (pos.x < 128.0) {
-        // top
-        p = vec3(1.0 - pos.y / 128.0,
-                 1.0,
-                 pos.x / 128.0);
-    } else if (pos.x < 256.0) {
-        // back
-        p = vec3(1.0 - pos.y / 128.0,
-                 1.0 - (pos.x - 128.0) / 128.0,
-                 1.0);
-    } else if (pos.x < 384.0) {
-        // bottom
-        p = vec3(1.0 - pos.y / 128.0,
-                 0.0,
-                 1.0 - (pos.x - 256.0) / 128.0);
-    } else if (pos.x < 512.0) {
-        // right
-        p = vec3(1.0,
-                 1.0 - pos.y / 128.0,
-                 1.0 - (pos.x - 384.0) / 128.0);
-    } else if (pos.x < 640.0) {
-        // front
-        p = vec3(1.0 - (pos.x - 512.0) / 128.0,
-                 1.0 - pos.y / 128.0,
-                 0.0);
-    } else if (pos.x < 768.0) {
-        // left
-        p = vec3(0,
-                 1.0 - pos.y / 128.0,
-                 (pos.x - 640.0) / 128.0);
-    }
-    return p - 0.5;
-}
-
-// Maps a 3D position to a 2D position on a virtual sphere that wraps around
-// the origin. The poles are aligned with the Z-axis.
-//
-// The coordinates are both in the range of [-0.5, 0.5].
-vec2 map_to_sphere_uv(vec3 vert) {
-	// Derived from https://stackoverflow.com/questions/25782895/what-is-the-difference-from-atany-x-and-atan2y-x-in-opengl-glsl/25783017
-	float radius = distance(vec3(0), vert);
-	float theta = atan(vert.y, vert.x + 1E-18); // in [-pi,pi]
-	float phi = acos(vert.z / radius); // in [0,pi]
-	return vec2(theta / PI * .5, phi / PI);
-}
-
-// float step(float edge, float x) {
-//     if (x < edge) {
-//         return 0.0;
-//     } else {
-//         return 1.0;
-//     }
-// }
-
-// Maps a uniform 3D position to an uniform 2D position on the current side.
-//
-// The X and Y of the returned vector are the coordinates and are in the range
-// of (-.5, .5).
-// 
-// Z is the remaining axis and is constant for a single side.
-//
-// W is a unique identifier for the side.
-//
-// TODO: define orientation.
-vec4 cube_map_to_side(vec3 p) {
-	if (abs(p.x) >= .5 - EPSILON) {
-		return vec4(p.y * sign(p.x), p.z, p.x, step(p.x, 0.0));
-	}
-	if (abs(p.y) >= .5 - EPSILON) {
-		return vec4(p.x * sign(-p.y), p.z, p.y, step(p.y, 0.0) + 2.0);
-	}
-	if (abs(p.z) >= .5 - EPSILON) {
-		return vec4(p.x * sign(p.z), p.y, p.z, step(p.z, 0.0) + 4.0);
-	}
-	return vec4(0.0, 0.0, 0.0, -1.0);
-}
-
-void mainCube(out vec4 fragColor, in vec3 fragCoord) {
-     fragColor.rgb = fragCoord.xyz + .5;
-}
-
-#ifndef _EMULATOR
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-     mainCube(fragColor, cube_map_to_3d(fragCoord));
-}
-#endif
-void main() {
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-    mainImage(gl_FragColor, gl_FragCoord.xy);
-    gl_FragColor.a = 1.0;
-}
 '''
 
 fragment_shader_source = '''
@@ -133,7 +22,7 @@ fragment_shader_source = '''
         // vec2 uv = fragCoord/vec2(768.0, 128.0);
 
         // Time varying pixel color
-        vec3 col = 0.5 + 0.5*cos(iTime + uv.xyx+vec3(0,2,4));
+        vec3 col = 0.5 + 0.5*cos(20.0 * iTime + uv.xyx+vec3(0,2,4));
 
         // Output to screen
         fragColor = vec4(col, 1.0);
@@ -155,14 +44,10 @@ create_prog = shade.shd_create_prog
 create_prog.restype = c_void_p
 
 destroy_prog = shade.shd_destroy_prog
-# destroy_prog.argtypes = (c_void_p, )
+destroy_prog.argtypes = (c_void_p, )
 
 prog_is_okay = shade.shd_prog_is_okay
-# prog_is_okay.argtypes = (c_void_p, )
-
-prog_info_log = shade.shd_prog_info_log
-prog_info_log.argstypes = (c_void_p, )
-prog_info_log.restype = c_char_p
+prog_is_okay.argtypes = (c_void_p, POINTER(c_char_p))
 
 prog_attach_shader = shade.shd_prog_attach_shader
 prog_attach_shader.argtypes = (c_void_p, c_int, c_char_p)
@@ -187,13 +72,14 @@ prog_attach_shader(prog, VERT, vertex_shader_source.encode('ascii'))
 prog_attach_shader(prog, FRAG, fragment_shader_source.encode('ascii'))
 prog_attach_predefined(prog, b'iResolution', RESOLUTION)
 prog_attach_predefined(prog, b"iTime", PLAY_TIME)
-if not shade.shd_prog_is_okay(prog):
-    print(prog_info_log(prog))
+info_log = c_char_p();
+if not shade.shd_prog_is_okay(prog, byref(info_log)):
+    print(info_log.value.decode('ascii'))
     exit()
-assert shade.shd_prog_is_okay(prog)
 shade.shd_use_prog(prog)
 
 shade.shd_start()
-time.sleep(1000)
+time.sleep(1)
 shade.shd_stop()
+destroy_prog(prog)
 shade.shd_deinit()

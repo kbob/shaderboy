@@ -1,6 +1,7 @@
 #include "shade.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 #include "bcm.h"
 #include "egl.h"
@@ -24,6 +25,7 @@ static bcm_context  *the_bcm;
 static EGL_context  *the_EGL;
 static LEDs_context *the_LEDs;
 static exec         *the_exec;
+static char         *the_info_log;
 
 // Should pass in sizes?
 
@@ -47,13 +49,18 @@ EXPORT void shd_init(int LEDs_width, int LEDs_height)
 
 EXPORT void shd_deinit(void)
 {
+    free(the_info_log);
     exec_stop(the_exec);
     // XXX destroy all programs
     destroy_exec(the_exec);
-    the_exec = NULL;
     deinit_LEDs(the_LEDs);
     deinit_EGL(the_EGL);
     deinit_bcm(the_bcm);
+    the_info_log = NULL;
+    the_exec = NULL;
+    the_LEDs = NULL;
+    the_EGL = NULL;
+    the_bcm = NULL;
 }
 
 EXPORT void shd_start(void)
@@ -81,17 +88,17 @@ EXPORT void shd_destroy_prog(shd_prog *prog)
     destroy_prog(prog);
 }
 
-EXPORT bool shd_prog_is_okay(shd_prog *prog)
+EXPORT bool shd_prog_is_okay(const shd_prog *prog, char **info_log)
 {
-    return prog_is_okay(prog);
+    free(the_info_log);
+    the_info_log = NULL;
+    bool ok = prog_is_okay(prog, &the_info_log);
+    if (!ok && info_log)
+        *info_log = the_info_log;
+    return ok;
 }
 
-EXPORT const char *shd_prog_info_log(const shd_prog *prog)
-{
-    return prog_info_log(prog);
-}
-
-EXPORT void shd_prog_attach_shader(shd_prog        *prog,
+EXPORT bool shd_prog_attach_shader(shd_prog        *prog,
                                     shd_shader_type type,
                                     const char     *source)
 {
@@ -104,13 +111,12 @@ EXPORT void shd_prog_attach_shader(shd_prog        *prog,
         ptype = PST_FRAGMENT;
         break;
     default:
-        ptype = 9999;           // trigger error in prog_attach_shader
-        break;
+        return false;
     }
-    prog_attach_shader(prog, ptype, source);
+    return prog_attach_shader(prog, ptype, source);
 }
 
-EXPORT void shd_prog_attach_predefined(shd_prog *pp,
+EXPORT bool shd_prog_attach_predefined(shd_prog *pp,
                                        const char *name,
                                        shd_predefined predef)
 {
@@ -123,7 +129,7 @@ EXPORT void shd_prog_attach_predefined(shd_prog *pp,
         pd = PD_PLAY_TIME;
         break;
     default:
-        return;
+        return false;
     }
-    prog_attach_predefined(pp, name, pd);
+    return prog_attach_predefined(pp, name, pd);
 }

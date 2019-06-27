@@ -1,6 +1,7 @@
 *.o
 lib*.a
 lib*.so
+a.out
 ltest-dynamic
 ltest-static
 ptest

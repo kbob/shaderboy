@@ -91,8 +91,9 @@ int main()
     shd_prog *prog = shd_create_prog();
     shd_prog_attach_shader(prog, SHD_SHADER_VERTEX, vertex_shader_source);
     shd_prog_attach_shader(prog, SHD_SHADER_FRAGMENT, frag_shader_source);
-    if (!shd_prog_is_okay(prog)) {
-        fprintf(stderr, "info: %s\n", shd_prog_info_log(prog));
+    char *info_log = NULL;
+    if (!shd_prog_is_okay(prog, &info_log)) {
+        fprintf(stderr, "info: %s\n", info_log);
         return 1;
     }
     shd_use_prog(prog);

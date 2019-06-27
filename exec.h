@@ -14,6 +14,6 @@ extern void destroy_exec(exec *);
 extern void exec_start(exec *);
 extern void exec_stop(exec *);
 
-extern void exec_use_prog(exec *, prog *);
+extern void exec_use_prog(exec *, const prog *);
 
 #endif /* !EXEC_included */
