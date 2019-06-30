@@ -17,7 +17,7 @@ EXPORT const int SHD_PREDEFINED_RESOLUTION_VALUE = SHD_PREDEFINED_RESOLUTION;
 EXPORT const int SHD_PREDEFINED_PLAY_TIME_VALUE = SHD_PREDEFINED_PLAY_TIME;
 EXPORT const int SHD_PREDEFINED_NOISE_SMALL_VALUE = SHD_PREDEFINED_NOISE_SMALL;
 EXPORT const int SHD_PREDEFINED_NOISE_MEDIUM_VALUE =
-    SHD_PREDEFINED_NOISE_MEDIUM;
+                     SHD_PREDEFINED_NOISE_MEDIUM;
 EXPORT const int SHD_PREDEFINED_BACK_BUFFER_VALUE = SHD_PREDEFINED_BACK_BUFFER;
 EXPORT const int SHD_PREDEFINED_IMU_VALUE = SHD_PREDEFINED_IMU;
 
@@ -98,36 +98,59 @@ EXPORT bool shd_prog_is_okay(const shd_prog *prog, char **info_log)
     return ok;
 }
 
-EXPORT bool shd_prog_attach_shader(shd_prog        *prog,
-                                    shd_shader_type type,
-                                    const char     *source)
+EXPORT bool shd_prog_attach_shader(shd_prog       *prog,
+                                   shd_shader_type type,
+                                   const char     *source)
 {
     shader_type ptype;
     switch (type) {
+
     case SHD_SHADER_VERTEX:
         ptype = PST_VERTEX;
         break;
+
     case SHD_SHADER_FRAGMENT:
         ptype = PST_FRAGMENT;
         break;
+
     default:
         return false;
     }
     return prog_attach_shader(prog, ptype, source);
 }
 
-EXPORT bool shd_prog_attach_predefined(shd_prog *pp,
-                                       const char *name,
-                                       shd_predefined predef)
+EXPORT bool shd_prog_attach_image(shd_prog   *pp,
+                                  const char *name,
+                                  size_t      width,
+                                  size_t      height,
+                                  uint8_t    *data)
+{
+    return prog_attach_image(pp, name, width, height, data);
+}
+
+EXPORT bool shd_prog_attach_predefined(shd_prog       *pp,
+                                       const char     *name,
+                                       shd_predefined  predef)
 {
     predefined pd;
     switch (predef) {
+
     case SHD_PREDEFINED_RESOLUTION:
         pd = PD_RESOLUTION;
         break;
+
     case SHD_PREDEFINED_PLAY_TIME:
         pd = PD_PLAY_TIME;
         break;
+
+    case SHD_PREDEFINED_NOISE_SMALL:
+        pd = PD_NOISE_SMALL;
+        break;
+
+    case SHD_PREDEFINED_NOISE_MEDIUM:
+        pd = PD_NOISE_MEDIUM;
+        break;
+
     default:
         return false;
     }

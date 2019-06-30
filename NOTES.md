@@ -54,3 +54,11 @@
     {
     }
     
+# GL Textures
+
+    glGenTextures => texture ID
+    glActiveTexture - selects one of the texture units
+    glBindTexture(GL_TEXTURE_2D, t_ID)  - bind to "target" -- 1 per type?
+    glTexImage2D(...) - attach image data to texture.
+    glGenerateMipmap() - applies to most recent texture?
+    

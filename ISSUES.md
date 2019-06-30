@@ -41,9 +41,17 @@ Has git.  https://github.com/kbob/shaderboy
 
 `bcm_context` vs `vidocore_context` is silly.
 
-## Implement Textures
+## RESOLVED: Implement Textures
 
-## Implement Time
+#### Resolution:
+Implemented textures.
+
+## RESOLVED: Implement Noise
+
+#### Resolution:
+Implemented noise.
+
+## RESOLVED: Implement Time
 
 Should implement at least one
 
@@ -52,6 +60,9 @@ Implemented iTime and iResolution.
 
 # Implement more predefined variables.
 
+`iTimeDelta`, `iFrame`, `iMouse`, `iDate`, `iChannel` should be easy.
+
+
 ## Implement CPU and IRQ affinity
 
 ## Get real-time kernel
@@ -59,3 +70,5 @@ Implemented iTime and iResolution.
 ## `shd_deinit` should destroy all programs.
 
 ## LEDs size is hardcoded in `render.update_predefines`.
+
+## Implement `shd_fps`.

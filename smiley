@@ -85,7 +85,7 @@ NOISE_MEDIUM = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_MEDIUM_VALUE')
 LEDS_WIDTH = 6 * 64
 LEDS_HEIGHT = 64
 
-img = load_image('test.png')
+img = load_image('smiley.png')
 
 shade.shd_init(LEDS_WIDTH, LEDS_HEIGHT)
 

@@ -52,7 +52,7 @@ extern bool        shd_prog_attach_image(shd_prog         *,
                                          const char       *name,
                                          size_t            width,
                                          size_t            height,
-                                         uint32_t         *values);
+                                         uint8_t          *data);
 extern bool        shd_prog_attach_predefined(shd_prog    *,
                                               const char  *name,
                                               shd_predefined);

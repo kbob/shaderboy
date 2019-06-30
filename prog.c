@@ -10,6 +10,13 @@
 
 #include <GLES2/gl2.h>
 
+typedef struct image_info {
+    char    *name;
+    size_t   width;
+    size_t   height;
+    uint8_t *data;
+} image_info;
+
 typedef struct predefined_info {
     char       *name;
     predefined  value;
@@ -19,6 +26,9 @@ struct shd_prog {
     int              id;
     char            *vert_shader_source;
     char            *frag_shader_source;
+    size_t           image_count;
+    size_t           image_alloc;
+    image_info *images;
     size_t           predef_count;
     size_t           predef_alloc;
     predefined_info *predefs;
@@ -43,6 +53,11 @@ void destroy_prog(prog *pp)
 {
     free(pp->vert_shader_source);
     free(pp->frag_shader_source);
+    for (size_t i = 0; i < pp->image_count; i++) {
+        free(pp->images[i].name);
+        free(pp->images[i].data);
+    }
+    free(pp->images);
     for (size_t i = 0; i < pp->predef_count; i++)
         free(pp->predefs[i].name);
     free(pp->predefs);
@@ -52,6 +67,31 @@ void destroy_prog(prog *pp)
 int prog_id(const prog *pp)
 {
     return pp->id;
+}
+
+size_t prog_image_count(const prog *pp)
+{
+    return pp->image_count;
+}
+
+const char *prog_image_name(const prog *pp, size_t index)
+{
+    return pp->images[index].name;
+}
+
+size_t prog_image_width(const prog *pp, size_t index)
+{
+    return pp->images[index].width;
+}
+
+size_t prog_image_height(const prog *pp, size_t index)
+{
+    return pp->images[index].height;
+}
+
+const uint8_t *prog_image_data(const prog *pp, size_t index)
+{
+    return pp->images[index].data;
 }
 
 size_t prog_predefined_count(const prog *pp)
@@ -108,12 +148,37 @@ bool prog_attach_shader(prog *pp, shader_type type, const char *source)
     }
 }
 
+bool prog_attach_image(prog       *pp,
+                       const char *name,
+                       size_t      width,
+                       size_t      height,
+                       uint8_t    *data)
+{
+    size_t n = pp->image_count;
+    if (pp->image_alloc <= n) {
+        size_t new_alloc = 2 * n + 10;
+        pp->images = realloc(pp->images, new_alloc * sizeof *pp->images);
+        pp->image_alloc = new_alloc;
+    }
+    // 4: four channels in RGBA
+    size_t byte_count = width * height * 4 * sizeof *data;
+    
+    pp->images[n].name = strdup(name);
+    pp->images[n].width = width;
+    pp->images[n].height = height;
+    pp->images[n].data = malloc(byte_count);
+    memcpy(pp->images[n].data, data, byte_count);
+    pp->image_count++;
+    return true;
+}
+
 bool prog_attach_predefined(prog *pp, const char *name, predefined value)
 {
     size_t n = pp->predef_count;
     if (pp->predef_alloc <= n) {
         size_t new_alloc = 2 * n + 10;
         pp->predefs = realloc(pp->predefs, new_alloc * sizeof *pp->predefs);
+        pp->predef_alloc = new_alloc;
     }
     pp->predefs[n].name = strdup(name);
     pp->predefs[n].value = value;
