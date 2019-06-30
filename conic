@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+
+# Port of https://www.shadertoy.com/view/ttSGWh by wyatt
+
+
+import ctypes
+from ctypes import byref, c_int, c_char, c_char_p, c_void_p, POINTER
+# import numpy as np
+# import PIL.Image
+import time
+
+vertex_shader_source = '''
+    attribute vec3 vert;
+    
+    void main(void) {
+        gl_Position = vec4(vert, 1.0);
+    }
+'''
+
+fragment_shader_source = '''
+    uniform float iTime;
+    uniform vec3 iResolution;
+    #define R iResolution.xyz
+    mat2 r (float a) {
+        float s = sin(a), c = cos(a);
+        return mat2(c,-s,s,c);
+    }
+    vec4 ro (vec3 U) {
+        vec3 v = U;
+        v.yz *= r (iTime);
+        v.zx *= r (iTime);
+        return vec4(v,(length(v.xy)-abs(v.z)));
+    }
+    void mainCube( out vec4 Q,vec3 U )
+    {
+        // U = 2.*(U-0.33333*R)/R.y;
+        U = 2. * U;
+
+        vec4 
+            v = ro(U),
+            n = ro(U+vec3(0.,1.,0.)/R),
+            e = ro(U+vec3(1.,0.,0.)/R),
+            s = ro(U-vec3(0.,1.,0.)/R),
+            w = ro(U-vec3(1.,0.,0.)/R);
+        vec3 g = normalize(vec3(e.w-w.w,n.w-s.w,.01));
+        float h = dot(g,ro(vec3(1.,0.,0.)).xyz);
+        Q = vec4(0.0, 0.0, 0.0, 0.0);
+        Q += .2*vec4(0.5+0.5*h*h*h)*smoothstep(0.,-0.1,v.w);
+        Q.rb += smoothstep(.1,.05,abs(v.w));
+        Q += smoothstep(.05,0.025,abs(v.x));
+        Q += smoothstep(.05,0.025,abs(v.y));
+        Q += smoothstep(.05,0.025,abs(v.z));
+        Q.rg += smoothstep(.25,.2,length(v.xy-v.z*vec2(cos(3.*iTime),sin(3.*iTime))));
+        Q.gb += smoothstep(.25,.2,length(v.xy-v.z*vec2(-cos(3.*iTime),-sin(3.*iTime))));
+        Q *= exp(-length(U));
+    }
+
+    // Maps 2D output image space to 3D cube space.
+    //
+    // The returned coordinates are in the range of (-.5, .5).
+    vec3 cube_map_to_3d(vec2 pos) {
+        vec3 p = vec3(0.0);
+        if (pos.x < 128.0) {
+            // top
+            p = vec3(1.0 - pos.y / 128.0,
+                     1.0,
+                     pos.x / 128.0);
+        } else if (pos.x < 256.0) {
+            // back
+            p = vec3(1.0 - pos.y / 128.0,
+                     1.0 - (pos.x - 128.0) / 128.0,
+                     1.0);
+        } else if (pos.x < 384.0) {
+            // bottom
+            p = vec3(1.0 - pos.y / 128.0,
+                     0.0,
+                     1.0 - (pos.x - 256.0) / 128.0);
+        } else if (pos.x < 512.0) {
+            // right
+            p = vec3(1.0,
+                     1.0 - pos.y / 128.0,
+                     1.0 - (pos.x - 384.0) / 128.0);
+        } else if (pos.x < 640.0) {
+            // front
+            p = vec3(1.0 - (pos.x - 512.0) / 128.0,
+                     1.0 - pos.y / 128.0,
+                     0.0);
+        } else if (pos.x < 768.0) {
+            // left
+            p = vec3(0,
+                     1.0 - pos.y / 128.0,
+                     (pos.x - 640.0) / 128.0);
+        }
+        return p - 0.5;
+    }
+    #ifndef _EMULATOR
+    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+        mainCube(fragColor, cube_map_to_3d(fragCoord));
+    }
+    #endif
+    void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        mainImage(gl_FragColor, gl_FragCoord.xy);
+        gl_FragColor.a = 1.0;
+    }
+    '''
+
+# def load_image(path):
+#     img = PIL.Image.open(path)
+#     mode = img.mode
+#     if mode != 'RGBA':
+#         exit('{} has unsupported mode {}'.format(path, mode))
+#     a = np.array(img)
+#     return (img.width, img.height, a.tobytes())
+
+shade = ctypes.cdll.LoadLibrary('./libshade.so')
+
+use_prog = shade.shd_use_prog
+use_prog.argtypes = (c_void_p, )
+
+create_prog = shade.shd_create_prog
+create_prog.restype = c_void_p
+
+destroy_prog = shade.shd_destroy_prog
+destroy_prog.argtypes = (c_void_p, )
+
+prog_is_okay = shade.shd_prog_is_okay
+prog_is_okay.argtypes = (c_void_p, POINTER(c_char_p))
+
+prog_attach_shader = shade.shd_prog_attach_shader
+prog_attach_shader.argtypes = (c_void_p, c_int, c_char_p)
+
+prog_attach_image = shade.shd_prog_attach_image
+prog_attach_image.argtypes = (c_void_p, c_char_p, c_int, c_int, c_char_p)
+
+prog_attach_predefined = shade.shd_prog_attach_predefined
+prog_attach_predefined.argtypes = (c_void_p, c_char_p, c_int)
+
+VERT = c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
+FRAG = c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
+
+RESOLUTION = c_int.in_dll(shade, 'SHD_PREDEFINED_RESOLUTION_VALUE')
+PLAY_TIME = c_int.in_dll(shade, 'SHD_PREDEFINED_PLAY_TIME_VALUE')
+NOISE_SMALL = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_SMALL_VALUE')
+NOISE_MEDIUM = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_MEDIUM_VALUE')
+
+LEDS_WIDTH = 6 * 64
+LEDS_HEIGHT = 64
+
+# img = load_image('test.png')
+
+shade.shd_init(LEDS_WIDTH, LEDS_HEIGHT)
+
+prog = create_prog()
+prog_attach_shader(prog, VERT, vertex_shader_source.encode('ascii'))
+prog_attach_shader(prog, FRAG, fragment_shader_source.encode('ascii'))
+prog_attach_predefined(prog, b'iResolution', RESOLUTION)
+prog_attach_predefined(prog, b'iTime', PLAY_TIME)
+# prog_attach_image(prog, b'noise_small', *img)
+info_log = c_char_p();
+if not shade.shd_prog_is_okay(prog, byref(info_log)):
+    print(info_log.value.decode('ascii'))
+    exit()
+shade.shd_use_prog(prog)
+
+shade.shd_start()
+time.sleep(60)
+shade.shd_stop()
+destroy_prog(prog)
+shade.shd_deinit()
