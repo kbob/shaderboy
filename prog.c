@@ -28,11 +28,48 @@ struct shd_prog {
     char            *frag_shader_source;
     size_t           image_count;
     size_t           image_alloc;
-    image_info *images;
+    image_info      *images;
     size_t           predef_count;
     size_t           predef_alloc;
     predefined_info *predefs;
 };
+
+static const char *GL_error_str(GLenum err)
+{
+    switch (err) {
+
+    case GL_NO_ERROR:
+        return "GL_NO_ERROR";
+
+    case GL_INVALID_ENUM:
+        return "GL_INVALID_ENUM";
+
+    case GL_INVALID_VALUE:
+        return "GL_INVALID_VALUE";
+
+    case GL_INVALID_OPERATION:
+        return "GL_INVALID_OPERATION";
+
+    case GL_OUT_OF_MEMORY:
+        return "GL_OUT_OF_MEMORY";
+
+    case GL_INVALID_FRAMEBUFFER_OPERATION:
+        return "GL_INVALID_FRAMEBUFFER_OPERATION";
+
+    default:
+        return "unknown GL error";
+    }
+}
+
+static void log_info(char **info_log, char *fmt, ...)
+{
+    if (!info_log)
+        return;
+    va_list ap;
+    va_start(ap, fmt);
+    vasprintf(info_log, fmt, ap);
+    va_end(ap);
+}
 
 static bool shader_is_ok(GLuint shader)
 {
@@ -113,11 +150,168 @@ predefined prog_predefined_value(const prog *pp, size_t index)
     return PD_UNKNOWN;
 }
 
+static bool check_uniform(GLuint prog,
+                          const char *name,
+                          GLint index,
+                          GLenum expected_type,
+                          GLint expected_size,
+                          GLint name_max_length,
+                          char **info_log)
+{
+    GLint u_size;
+    GLenum u_type;
+    char u_name[name_max_length];
+    glGetActiveUniform(prog,
+                       index,
+                       sizeof u_name,
+                       NULL,
+                       &u_size,
+                       &u_type,
+                       u_name);
+    if (u_type != expected_type || u_size != expected_size) {
+        log_info(info_log,
+                 "uniform %s: unexpected type/size %#0x/%d\n",
+                 name, u_type, u_size);
+        return false;
+    }
+    return true;
+}
+
 bool prog_is_okay(const prog *pp, char **info_log)
 {
     GLuint prog = prog_instantiate(pp, info_log);
+    if (prog == 0)
+        return false;
 
-    // enumerate attributes.  Verify that "vert" is the only one.
+    // Enumerate attributes.  Verify that "vert" is the only one.
+
+    GLint attrib_count;
+    glGetProgramiv(prog, GL_ACTIVE_ATTRIBUTES, &attrib_count);
+    if (attrib_count != 1) {
+        return false;
+    }
+    GLchar attrib_name[16];
+    GLint attrib_size;
+    GLenum attrib_type;
+    glGetActiveAttrib(prog,
+                      0,
+                      sizeof attrib_name,
+                      NULL,
+                      &attrib_size,
+                      &attrib_type,
+                      attrib_name);
+    if (strcmp(attrib_name, "vert") != 0) {
+        log_info(info_log, "unexpected attribute: %s", attrib_name);
+        return false;
+    }
+    if (attrib_type != GL_FLOAT_VEC3 || attrib_size != 1) {
+        log_info(info_log, "`vert' attribute type/size should be GL_VEC3/1");
+    }
+
+    // Enumerate uniforms.  Verify each is bound with the correct
+    // type and size.
+
+    GLint uniform_count;
+    glGetProgramiv(prog, GL_ACTIVE_UNIFORMS, &uniform_count);
+    GLint uniform_max_length;
+    glGetProgramiv(prog, GL_ACTIVE_UNIFORM_MAX_LENGTH, &uniform_max_length);
+    bool uniform_bound[uniform_count];
+    memset(uniform_bound, 0, sizeof uniform_bound);
+
+    // Verify all images in pp.
+    for (size_t i = 0; i < pp->image_count; i++) {
+        const image_info *ip = &pp->images[i];
+        GLint index = glGetUniformLocation(prog, ip->name);
+        if (index == -1)
+           continue;  // It's okay to provide unused uniforms.
+        if (!check_uniform(prog,
+                           ip->name,
+                           index,
+                           GL_SAMPLER_2D,
+                           1,
+                           uniform_max_length,
+                           info_log))
+            return false;
+        uniform_bound[index] = true;
+    }
+
+    // Verify all predefineds in pp.
+    for (size_t i = 0; i < pp->predef_count; i++) {
+        const predefined_info *pip = &pp->predefs[i];
+        GLint index = glGetUniformLocation(prog, pip->name);
+        if (index == -1)
+           continue;  // It's okay to provide unused uniforms.
+        GLenum expected_type;
+        GLint expected_size;
+        switch (pip->value) {
+
+        case PD_RESOLUTION:
+            expected_type = GL_FLOAT_VEC3;
+            expected_size = 1;
+            break;
+
+        case PD_PLAY_TIME:
+            expected_type = GL_FLOAT;
+            expected_size = 1;
+            break;
+
+        case PD_NOISE_SMALL:
+            expected_type = GL_SAMPLER_2D;
+            expected_size = 1;
+            break;
+
+        case PD_NOISE_MEDIUM:
+            expected_type = GL_SAMPLER_2D;
+            expected_size = 1;
+            break;
+
+        default:
+            log_info(info_log, "unknown predefined %d", pip->value);
+            return false;
+        }
+        if (!check_uniform(prog,
+                           pip->name,
+                           index,
+                           expected_type,
+                           expected_size,
+                           uniform_max_length,
+                           info_log))
+            return false;
+        uniform_bound[index] = true;
+    }
+
+    for (size_t i = 0; i < uniform_count; i++) {
+        if (!uniform_bound[i]) {
+            char u_name[uniform_max_length];
+            GLenum u_type;
+            GLint u_size;
+            glGetActiveUniform(prog,
+                               i,
+                               sizeof u_name,
+                               NULL,
+                               &u_size,
+                               &u_type,
+                               u_name);
+            log_info(info_log, "uniform %s is not bound.", u_name);
+            return false;
+            
+        }
+    }
+    
+    // 
+    // get max uniform index
+    // alloc flag.
+
+    // for all in pp.images:
+    //   if variable in shader:
+    //       verify type
+
+    // for all in pp.predef:
+    //   if variable in shader:
+    //     verify type matches predef type.
+
+    // for all shader uniforms:
+    //   verify either in predef or 
 
     // enumerate uniforms.  Verify they are all accounted for.
     // for (name, value) in predefined:
@@ -184,43 +378,6 @@ bool prog_attach_predefined(prog *pp, const char *name, predefined value)
     pp->predefs[n].value = value;
     pp->predef_count++;
     return true;
-}
-
-static const char *GL_error_str(GLenum err)
-{
-    switch (err) {
-
-    case GL_NO_ERROR:
-        return "GL_NO_ERROR";
-
-    case GL_INVALID_ENUM:
-        return "GL_INVALID_ENUM";
-
-    case GL_INVALID_VALUE:
-        return "GL_INVALID_VALUE";
-
-    case GL_INVALID_OPERATION:
-        return "GL_INVALID_OPERATION";
-
-    case GL_OUT_OF_MEMORY:
-        return "GL_OUT_OF_MEMORY";
-
-    case GL_INVALID_FRAMEBUFFER_OPERATION:
-        return "GL_INVALID_FRAMEBUFFER_OPERATION";
-
-    default:
-        return "unknown GL error";
-    }
-}
-
-static void log_info(char **info_log, char *fmt, ...)
-{
-    if (!info_log)
-        return;
-    va_list ap;
-    va_start(ap, fmt);
-    vasprintf(info_log, fmt, ap);
-    va_end(ap);
 }
 
 static GLuint create_shader(const prog *pp,
