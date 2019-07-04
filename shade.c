@@ -73,6 +73,11 @@ EXPORT void shd_stop(void)
     exec_stop(the_exec);
 }
 
+EXPORT double shd_fps(void)
+{
+    return exec_fps(the_exec);
+}
+
 EXPORT void shd_use_prog(shd_prog *pp)
 {
     exec_use_prog(the_exec, pp);

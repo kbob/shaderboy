@@ -4,9 +4,7 @@
 
 
 import ctypes
-from ctypes import byref, c_int, c_char, c_char_p, c_void_p, POINTER
-# import numpy as np
-# import PIL.Image
+from ctypes import byref, c_char, c_char_p, c_double, c_int, c_void_p, POINTER
 import time
 
 vertex_shader_source = '''
@@ -105,14 +103,6 @@ fragment_shader_source = '''
     }
     '''
 
-# def load_image(path):
-#     img = PIL.Image.open(path)
-#     mode = img.mode
-#     if mode != 'RGBA':
-#         exit('{} has unsupported mode {}'.format(path, mode))
-#     a = np.array(img)
-#     return (img.width, img.height, a.tobytes())
-
 shade = ctypes.cdll.LoadLibrary('./libshade.so')
 
 use_prog = shade.shd_use_prog
@@ -135,6 +125,10 @@ prog_attach_image.argtypes = (c_void_p, c_char_p, c_int, c_int, c_char_p)
 
 prog_attach_predefined = shade.shd_prog_attach_predefined
 prog_attach_predefined.argtypes = (c_void_p, c_char_p, c_int)
+
+fps = shade.shd_fps
+fps.argtypes = ()
+fps.restype = c_double
 
 VERT = c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
 FRAG = c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
@@ -164,7 +158,15 @@ if not shade.shd_prog_is_okay(prog, byref(info_log)):
 shade.shd_use_prog(prog)
 
 shade.shd_start()
-time.sleep(60)
+
+for i in range(60):
+    try:
+        time.sleep(1)
+        print('FPS: {:.3}'.format(fps()))
+    except KeyboardInterrupt:
+        print()
+        break
+
 shade.shd_stop()
 destroy_prog(prog)
 shade.shd_deinit()

@@ -1,0 +1,241 @@
+#!/usr/bin/env python3
+
+import ctypes
+from ctypes import byref, c_char, c_char_p, c_double, c_int, c_void_p, POINTER
+import numpy as np
+import PIL.Image
+import time
+
+vertex_shader_source = '''
+    attribute vec3 vert;
+    
+    void main(void) {
+        gl_Position = vec4(vert, 1.0);
+    }
+'''
+
+fragment_shader_source = '''
+    uniform float iTime;
+    uniform vec3 iResolution;
+    uniform sampler2D noise_small;
+
+    int xor8(int a, int b)
+    {
+        int r = 0;
+
+        if (a >= 512)
+            a -= 512;
+        if (b >= 512)
+            b -= 512;
+        if (a >= 256)
+            a -= 256;
+        if (b >= 256)
+            b -= 256;
+
+        if (a >= 128) {
+            if (b < 128) {
+                r += 128;
+            }
+            a -= 128;
+        } else if (b >= 128) {
+            r += 128;
+        }
+        if (b >= 128) {
+            b -= 128;
+        }
+
+        if (a >= 64) {
+            if (b < 64)
+                r += 64;
+            a -= 64;
+        } else if (b >= 64) {
+            r += 64;
+        }
+        if (b >= 64) {
+            b -= 64;
+        }
+
+        if (a >= 32) {
+            if (b < 32)
+                r += 32;
+            a -= 32;
+        } else if (b >= 32) {
+            r += 32;
+
+        }
+        if (b >= 32) {
+            b -= 32;
+        }
+
+        if (a >= 16) {
+            if (b < 16)
+                r += 16;
+            a -= 16;
+        } else if (b >= 16) {
+            r += 16;
+        }
+        if (b >= 16) {
+            b -= 16;
+        }
+
+        if (a >= 8) {
+            if (b < 8)
+                r += 8;
+            a -= 8;
+        } else if (b >= 8) {
+            r += 8;
+        }
+        if (b >= 8) {
+            b -= 8;
+        }
+
+        if (a >= 4) {
+            if (b < 4)
+                r += 4;
+            a -= 4;
+        } else if (b >= 4) {
+            r += 4;
+        }
+        if (b >= 4) {
+            b -= 4;
+        }
+
+        if (a >= 2) {
+            if (b < 2)
+                r += 2;
+            a -= 2;
+        } else if (b >= 2) {
+            r += 2;
+        }
+        if (b >= 2) {
+            b -= 2;
+        }
+
+        if (a - b != 0)
+            r += 1;
+
+        return r;
+    }
+
+    void mainImage( out vec4 fragColor, in vec2 fragCoord )
+    {
+        // Normalized pixel coordinates (from 0 to 1)
+        vec2 uv = fragCoord/iResolution.xy;
+
+        // Time varying pixel color
+        vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+
+        float px = 1.5*(fragCoord.x - 0.5 * iResolution.x) / iResolution.y;
+        float py = 1.5*(fragCoord.y - 0.5 * iResolution.y) / iResolution.y;
+        float r,g,b;
+
+        px -= 0.75;
+        py += 0.33;
+
+        float px2 = px + sin(py * 4.6 + 0.5 * iTime) * 0.2;
+        float py2 = py + sin(px * 2.6) * 0.7;
+
+        px2 += sin(py2*px2 * 9.6) * 0.1;
+        py2 += sin(px2*px2 * 7.6 + iTime) * 0.2;
+
+        float fx = px2;
+        float fy = py2;
+
+        r = sin(10.0 * ((fx*fx)+(fy*fy))) * 0.5 + 0.5;
+        g = sin(10.0 * sqrt((fx*fx)+(fy*fy))) * 0.5 + 0.5;
+        b = sin(10.0 * pow((fx*fx)+(fy*fy), 1.5)) * 0.5 + 0.5;
+
+        r = (r + b + g) / 3.0 + 0.2;
+        r *= r;
+        r *= r;
+        g = (b + g) / 2.0;
+        b = g;
+        g *= 0.9;
+
+        // r *= float((int(fragCoord.x) ^ int(fragCoord.y)) & 0xff) / 255.0;
+        r *= float(xor8(int(fragCoord.x), int(fragCoord.y))) / 255.0;
+        g += 0.2 * r;
+        b += 0.2 * r;
+
+        if ((px2 * 2.0) - floor(px2 * 2.0) < 0.5) {
+            float t = r;
+            r = g;
+            g = t;
+        }
+
+        // Output to screen
+        fragColor = vec4(r,g,b,1.0);
+    }
+
+    void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        mainImage(gl_FragColor, gl_FragCoord.xy);
+        gl_FragColor.a = 1.0;
+    }
+'''
+
+
+shade = ctypes.cdll.LoadLibrary('./libshade.so')
+
+use_prog = shade.shd_use_prog
+use_prog.argtypes = (c_void_p, )
+
+create_prog = shade.shd_create_prog
+create_prog.restype = c_void_p
+
+destroy_prog = shade.shd_destroy_prog
+destroy_prog.argtypes = (c_void_p, )
+
+prog_is_okay = shade.shd_prog_is_okay
+prog_is_okay.argtypes = (c_void_p, POINTER(c_char_p))
+
+prog_attach_shader = shade.shd_prog_attach_shader
+prog_attach_shader.argtypes = (c_void_p, c_int, c_char_p)
+
+prog_attach_image = shade.shd_prog_attach_image
+prog_attach_image.argtypes = (c_void_p, c_char_p, c_int, c_int, c_char_p)
+
+prog_attach_predefined = shade.shd_prog_attach_predefined
+prog_attach_predefined.argtypes = (c_void_p, c_char_p, c_int)
+
+fps = shade.shd_fps
+fps.argtypes = ()
+fps.restype = c_double
+
+VERT = c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
+FRAG = c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
+
+RESOLUTION = c_int.in_dll(shade, 'SHD_PREDEFINED_RESOLUTION_VALUE')
+PLAY_TIME = c_int.in_dll(shade, 'SHD_PREDEFINED_PLAY_TIME_VALUE')
+NOISE_SMALL = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_SMALL_VALUE')
+NOISE_MEDIUM = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_MEDIUM_VALUE')
+
+LEDS_WIDTH = 6 * 64
+LEDS_HEIGHT = 64
+
+shade.shd_init(LEDS_WIDTH, LEDS_HEIGHT)
+
+prog = create_prog()
+prog_attach_shader(prog, VERT, vertex_shader_source.encode('ascii'))
+prog_attach_shader(prog, FRAG, fragment_shader_source.encode('ascii'))
+prog_attach_predefined(prog, b'iResolution', RESOLUTION)
+prog_attach_predefined(prog, b'iTime', PLAY_TIME)
+info_log = c_char_p();
+if not shade.shd_prog_is_okay(prog, byref(info_log)):
+    print(info_log.value.decode('ascii'))
+    exit()
+shade.shd_use_prog(prog)
+
+shade.shd_start()
+
+for i in range(30):
+    try:
+        time.sleep(1)
+        print('FPS: {:.3}'.format(fps()))
+    except KeyboardInterrupt:
+        print()
+        break
+
+shade.shd_stop()
+destroy_prog(prog)
+shade.shd_deinit()

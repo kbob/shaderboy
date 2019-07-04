@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "bcm.h"
 #include "queue.h"
@@ -12,25 +13,36 @@
 #define CBQ_SIZE 200
 
 struct exec {
-    bcm_context    *bcm;
-    LEDs_context   *leds;
+    // borrowed objects
+    bcm_context      *bcm;
+    LEDs_context     *leds;
 
+    // start/stop control
     bool            running;
     bool            shutdown;
     unsigned        running_count;
     pthread_cond_t  running_cond;
     pthread_mutex_t running_lock;
 
+    // FPS calculation
+    unsigned        frame_count;
+    struct timespec time_zero;
+    pthread_mutex_t fps_lock;
+
+    // current program
     const prog     *prog;
     pthread_mutex_t prog_lock;
 
+    // worker threads
     pthread_t       render_thread;
     pthread_t       cmd_thread;
     pthread_t       output_thread;
 
+    // inter-worker queues
     queue          *framebuffer_queue;
     queue          *cmdbuffer_queue;
 
+    // inter-worker data buffers
     LED_pixel      *framebuffers[FBQ_SIZE];
     LED_cmd        *cmdbuffers[CBQ_SIZE];
 };
@@ -69,8 +81,8 @@ static void shutdown(exec *ex)
 {
     pthread_mutex_lock(&ex->running_lock);
     ex->shutdown = true;
-    pthread_mutex_unlock(&ex->running_lock);
     pthread_cond_broadcast(&ex->running_cond);
+    pthread_mutex_unlock(&ex->running_lock);
 }
 
 static const prog *get_prog(exec *ex)
@@ -86,6 +98,21 @@ static void set_prog(exec *ex, const prog *pp)
     pthread_mutex_lock(&ex->prog_lock);
     ex->prog = pp;
     pthread_mutex_unlock(&ex->prog_lock);
+}
+
+static void reset_fps(exec *ex)
+{
+    pthread_mutex_lock(&ex->fps_lock);
+    clock_gettime(CLOCK_MONOTONIC, &ex->time_zero);
+    ex->frame_count = 0;
+    pthread_mutex_unlock(&ex->fps_lock);
+}
+
+static void count_frame(exec *ex)
+{
+    pthread_mutex_lock(&ex->fps_lock);
+    ex->frame_count++;
+    pthread_mutex_unlock(&ex->fps_lock);
 }
 
 static void *render_thread_main(void *user_data)
@@ -137,6 +164,8 @@ static void *output_thread_main(void *user_data)
         LEDs_write_cmds(ex->leds, cmds);
         
         queue_release_empty(ex->cmdbuffer_queue);
+        
+        count_frame(ex);
     }
     thread_finished(ex);
     return NULL;
@@ -229,6 +258,7 @@ void exec_start(exec *ex)
     ex->running = true;
     pthread_cond_broadcast(&ex->running_cond);
     pthread_mutex_unlock(&ex->running_lock);
+    reset_fps(ex);
 }
 
 
@@ -242,7 +272,20 @@ void exec_stop(exec *ex)
     pthread_mutex_unlock(&ex->running_lock);
 }
 
+double exec_fps(exec *ex)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    pthread_mutex_lock(&ex->fps_lock);
+    double seconds = (now.tv_nsec - ex->time_zero.tv_nsec) / 1.e9;
+    seconds += now.tv_sec - ex->time_zero.tv_sec;
+    double fps = ex->frame_count / seconds;
+    pthread_mutex_unlock(&ex->fps_lock);
+    return fps;
+}
+
 void exec_use_prog(exec *ex, const prog *pp)
 {
     set_prog(ex, pp);
+    reset_fps(ex);
 }

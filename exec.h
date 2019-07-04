@@ -8,12 +8,14 @@
 
 typedef struct exec exec;
 
-extern exec *create_exec(bcm_context *, LEDs_context *);
-extern void destroy_exec(exec *);
+extern exec  *create_exec(bcm_context *, LEDs_context *);
+extern void   destroy_exec(exec *);
 
-extern void exec_start(exec *);
-extern void exec_stop(exec *);
+extern void   exec_start(exec *);
+extern void   exec_stop(exec *);
 
-extern void exec_use_prog(exec *, const prog *);
+extern double exec_fps(exec *);
+
+extern void   exec_use_prog(exec *, const prog *);
 
 #endif /* !EXEC_included */

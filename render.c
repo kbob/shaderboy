@@ -1,5 +1,6 @@
 #include "render.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -179,6 +180,15 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
     }
 }
 
+#define CHECK_ERROR                                                     \
+    ({                                                                  \
+        GLenum err = glGetError();                                      \
+        if (err)                                                        \
+            fprintf(stderr, "%s:%d: GL error 0x%04x\n",                 \
+                    __FILE__, __LINE__, err);                           \
+    })
+
+
 void render_frame(render_state *rs, const prog *pp)
 {
     bool new_prog = rs->prog_id != prog_id(pp);
@@ -186,22 +196,32 @@ void render_frame(render_state *rs, const prog *pp)
         rs->prog_id = prog_id(pp);
         glDeleteProgram(rs->prog);
         rs->prog = prog_instantiate((prog *)pp, NULL);
+        CHECK_ERROR;
         glUseProgram(rs->prog);
+        CHECK_ERROR;
         rs->vert_index = glGetAttribLocation(rs->prog, "vert");
+        CHECK_ERROR;
         glVertexAttribPointer(rs->vert_index,
                               3,
                               GL_FLOAT,
                               GL_FALSE,
                               0,
                               vertices);
+        CHECK_ERROR;
         glEnableVertexAttribArray(rs->vert_index);
+        CHECK_ERROR;
         load_images(rs, pp);
+        CHECK_ERROR;
     }
 
+    CHECK_ERROR;
     update_predefineds(rs, pp, new_prog);
+    CHECK_ERROR;
 
     glClear(GL_COLOR_BUFFER_BIT);
+    CHECK_ERROR;
     glDrawArrays(GL_TRIANGLE_STRIP, rs->vert_index, vertex_count);
+    CHECK_ERROR;
 
     EGL_swap_buffers(rs->egl);
 }
