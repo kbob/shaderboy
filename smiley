@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 
-import ctypes
-from ctypes import byref, c_char, c_char_p, c_double, c_int, c_void_p, POINTER
+from ctypes import byref, c_char_p
 import numpy as np
 import PIL.Image
+import shade
+import sys
 import time
+
+LEDS_WIDTH = 6 * 64
+LEDS_HEIGHT = 64
 
 vertex_shader_source = '''
     attribute vec3 vert;
@@ -17,7 +21,7 @@ vertex_shader_source = '''
 fragment_shader_source = '''
     uniform float iTime;
     uniform vec3 iResolution;
-    uniform sampler2D noise_small;
+    uniform sampler2D face;
 
     void mainImage( out vec4 fragColor, in vec2 fragCoord )
     {
@@ -27,7 +31,7 @@ fragment_shader_source = '''
 
         // Time varying pixel color
         vec3 col = 0.5 + 0.5*cos(iTime + uv6.xyx+vec3(0,2,4));
-        vec3 c2 = texture2D(noise_small, uv6 + iTime * 0.1).rgb;
+        vec3 c2 = texture2D(face, uv6 + iTime * 0.1).rgb;
         c2 = c2 * c2;
         col *= c2;
 
@@ -51,70 +55,30 @@ def load_image(path):
     a = np.array(img)
     return (img.width, img.height, a.tobytes())
 
-shade = ctypes.cdll.LoadLibrary('./libshade.so')
-
-use_prog = shade.shd_use_prog
-use_prog.argtypes = (c_void_p, )
-
-create_prog = shade.shd_create_prog
-create_prog.restype = c_void_p
-
-destroy_prog = shade.shd_destroy_prog
-destroy_prog.argtypes = (c_void_p, )
-
-prog_is_okay = shade.shd_prog_is_okay
-prog_is_okay.argtypes = (c_void_p, POINTER(c_char_p))
-
-prog_attach_shader = shade.shd_prog_attach_shader
-prog_attach_shader.argtypes = (c_void_p, c_int, c_char_p)
-
-prog_attach_image = shade.shd_prog_attach_image
-prog_attach_image.argtypes = (c_void_p, c_char_p, c_int, c_int, c_char_p)
-
-prog_attach_predefined = shade.shd_prog_attach_predefined
-prog_attach_predefined.argtypes = (c_void_p, c_char_p, c_int)
-
-fps = shade.shd_fps
-fps.argtypes = ()
-fps.restype = c_double
-
-VERT = c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
-FRAG = c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
-
-RESOLUTION = c_int.in_dll(shade, 'SHD_PREDEFINED_RESOLUTION_VALUE')
-PLAY_TIME = c_int.in_dll(shade, 'SHD_PREDEFINED_PLAY_TIME_VALUE')
-NOISE_SMALL = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_SMALL_VALUE')
-NOISE_MEDIUM = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_MEDIUM_VALUE')
-
-LEDS_WIDTH = 6 * 64
-LEDS_HEIGHT = 64
-
 img = load_image('smiley.png')
 
-shade.shd_init(LEDS_WIDTH, LEDS_HEIGHT)
+shade.init(LEDS_WIDTH, LEDS_HEIGHT)
 
-prog = create_prog()
-prog_attach_shader(prog, VERT, vertex_shader_source.encode('ascii'))
-prog_attach_shader(prog, FRAG, fragment_shader_source.encode('ascii'))
-prog_attach_predefined(prog, b'iResolution', RESOLUTION)
-prog_attach_predefined(prog, b'iTime', PLAY_TIME)
-prog_attach_image(prog, b'noise_small', *img)
-info_log = c_char_p();
-if not shade.shd_prog_is_okay(prog, byref(info_log)):
-    print(info_log.value.decode('ascii'))
-    exit()
-shade.shd_use_prog(prog)
+prog = shade.Prog()
+prog.attach_shader(shade.ShaderType.VERTEX, vertex_shader_source)
+prog.attach_shader(shade.ShaderType.FRAGMENT, fragment_shader_source)
+prog.attach_predefined('iResolution', shade.Predefined.RESOLUTION)
+prog.attach_predefined('iTime', shade.Predefined.PLAY_TIME)
+prog.attach_image('face', *img)
+prog.check_okay()
+prog.make_current()
 
-shade.shd_start()
+shade.start()
 
 for i in range(60):
     try:
         time.sleep(1)
-        print('FPS: {:.3}'.format(fps()))
+        print('FPS: {:.3}'.format(shade.fps()))
     except KeyboardInterrupt:
         print()
         break
 
-shade.shd_stop()
-destroy_prog(prog)
-shade.shd_deinit()
+shade.stop()
+
+del prog
+shade.deinit()
