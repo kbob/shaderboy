@@ -2,12 +2,14 @@
        CFLAGS := -g -Wall -Werror -fpic -Wmissing-prototypes
       LDFLAGS := -g -L/opt/vc/lib -fvisibility=hidden -Wl,-rpath=`pwd`
        LDLIBS := -lbcm_host -lbrcmEGL -lbrcmGLESv2 -lftdi -lm -lpthread
+      INSTALL := install
+       PREFIX := /usr/local
 
  ptest_CFILES := ptest.c queue.c
  ptest_OFILES := $(ptest_CFILES:.c=.o)
 
- shade_CFILES := shade.c bcm.c egl.c exec.c leds.c mpsse.c prog.c	\
-		 queue.c render.c
+ shade_CFILES := shade.c bcm.c egl.c exec.c leds.c mpsse.c prog.c       \
+                 queue.c render.c
 
  shade_OFILES := $(shade_CFILES:.c=.o)
 
@@ -31,3 +33,9 @@ libshade.so: $(shade_OFILES)
 
 clean:
 	rm -f *.o $(TARGETS)
+
+install: all shaderbox
+	$(INSTALL) shaderbox $(PREFIX)/bin
+	$(INSTALL) libshade.a $(PREFIX)/lib
+	$(INSTALL) libshade.so $(PREFIX)/lib
+        # Linux may require "sudo ldconfig" afterwards.
