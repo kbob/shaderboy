@@ -3,6 +3,20 @@ from ctypes import byref, c_bool, c_char, c_char_p, c_double, c_int
 from ctypes import c_void_p, POINTER
 from enum import Enum
 
+
+__all__ = [
+    'ShaderType',
+    'Predefined',
+    'ProgError',
+    'Prog',
+    'init',
+    'deinit',
+    'start',
+    'stop',
+    'fps',
+    ]
+
+
 try:
     libshade = ctypes.cdll.LoadLibrary('libshade.so')
 except OSError:
@@ -30,7 +44,8 @@ def_enum('ShaderType', 'SHD_SHADER_', 'VERTEX FRAGMENT', '_VALUE')
 
 def_enum('Predefined',
          'SHD_PREDEFINED_',
-         'RESOLUTION PLAY_TIME NOISE_SMALL NOISE_MEDIUM BACK_BUFFER IMU',
+         'RESOLUTION PLAY_TIME RENDER_TIME FRAME '
+         'NOISE_SMALL NOISE_MEDIUM BACK_BUFFER IMU',
          '_VALUE')
 
 

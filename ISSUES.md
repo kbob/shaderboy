@@ -71,4 +71,9 @@ Implemented iTime and iResolution.
 
 ## LEDs size is hardcoded in `render.update_predefines`.
 
-## Implement `shd_fps`.
+## RESOLVED: Implement `shd_fps`.
+
+####Resolution:
+Implemented `shd_fps`.
+
+## Locks up if run duration less than 0.

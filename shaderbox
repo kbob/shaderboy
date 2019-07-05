@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+
+from argparse import ArgumentParser
+from collections import namedtuple
+import io
+from pathlib import Path
+import re
+import sys
+import time
+
+import numpy as np
+import PIL.Image
+
+import shade
+from shade import ShaderType, Predefined, Prog
+
+LEDS_WIDTH = 384
+LEDS_HEIGHT = 64
+
+vertex_shader_source = '''
+    attribute vec3 vert;
+    
+    void main(void) {
+        gl_Position = vec4(vert, 1.0);
+    }
+'''.replace('\n    ', '\n')
+
+image_main_source = '''
+    void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        mainImage(gl_FragColor, gl_FragCoord.xy);
+        gl_FragColor.a = 1.0;
+    }
+'''.replace('\n    ', '\n')
+
+cube_main_source = '''
+    // Maps 2D output image space to 3D cube space.
+    //
+    // The returned coordinates are in the range of (-.5, .5).
+    vec3 cube_map_to_3d(vec2 pos) {
+        vec3 p = vec3(0.0);
+        if (pos.x < 128.0) {
+            // top
+            p = vec3(1.0 - pos.y / 128.0,
+                     1.0,
+                     pos.x / 128.0);
+        } else if (pos.x < 256.0) {
+            // back
+            p = vec3(1.0 - pos.y / 128.0,
+                     1.0 - (pos.x - 128.0) / 128.0,
+                     1.0);
+        } else if (pos.x < 384.0) {
+            // bottom
+            p = vec3(1.0 - pos.y / 128.0,
+                     0.0,
+                     1.0 - (pos.x - 256.0) / 128.0);
+        } else if (pos.x < 512.0) {
+            // right
+            p = vec3(1.0,
+                     1.0 - pos.y / 128.0,
+                     1.0 - (pos.x - 384.0) / 128.0);
+        } else if (pos.x < 640.0) {
+            // front
+            p = vec3(1.0 - (pos.x - 512.0) / 128.0,
+                     1.0 - pos.y / 128.0,
+                     0.0);
+        } else if (pos.x < 768.0) {
+            // left
+            p = vec3(0,
+                     1.0 - pos.y / 128.0,
+                     (pos.x - 640.0) / 128.0);
+        }
+        return p - 0.5;
+    }
+
+    #ifndef _EMULATOR
+    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+        mainCube(fragColor, cube_map_to_3d(fragCoord));
+    }
+    #endif
+'''.replace('\n    ', '\n')
+
+class PredefinedVar(namedtuple('PredefinedVar', 'name predef type size')):
+    """Variable that environment predefines"""
+
+class ImageInfo(namedtuple('ImageInfo', 'var file spath')):
+    """information to load an image"""
+
+class PredefInfo(namedtuple('PredefInfo', 'var predef')):
+    """information to load a predefined variable"""
+
+
+predefined_vars = [
+    PredefinedVar('iResolution',  Predefined.RESOLUTION,   'vec3',  0),
+    PredefinedVar('iTime',        Predefined.PLAY_TIME,    'float', 0),
+    # PredefinedVar('iTimeDelta',   Predefined.RENDER_TIME,  'float', 0),
+    # PredefinedVar('iFrame',       Predefined.FRAME,        'float', 0),
+    # PredefinedVar('iChannelTime', Predefined.CHANNEL_TIME, 'float', 4),
+    # PredefinedVar('iMouse',       Predefined.MOUSE,        'vec4',  0),
+    # PredefinedVar('iDate',        Predefined.DATE,         'vec4',  0),
+    # PredefinedVar('iSampleRate',  Predefined.SAMPLE_RATE,  'float', 0),
+    # PredefinedVar('iChannelResolution',
+    #                               Predefined.CHANNEL_RESOLUTION,
+    #                                                        'vec3',  4),
+]
+
+
+# I like to precompile my regular expressions and prebind the desired
+# method.
+
+shebang_pat = r'#!'
+pragma_pat = r'\s*#\s*pragma\s+'
+ident_pat = r'[A-Za-z+]\w*'
+pragma_use_pat = pragma_pat + 'use\s*"(?P<file>.*)"$'
+pragma_map_pat = pragma_pat + 'map\s+(?P<var>' + ident_pat + r')\s*=\s*'
+pragma_image_pat = pragma_map_pat + 'image:(?P<file>.*?)\s*$'
+pragma_builtin_pat = pragma_map_pat + 'builtin:(?P<builtin>.*?)\s*$'
+pragma_perip_pat = pragma_map_pat + 'perip_map4:.*$'
+
+match_shebang = re.compile(shebang_pat).match
+match_pragma = re.compile(pragma_pat).match
+match_use = re.compile(pragma_use_pat).match
+match_map = re.compile(pragma_map_pat).match
+match_image = re.compile(pragma_image_pat).match
+match_builtin = re.compile(pragma_builtin_pat).match
+match_perip = re.compile(pragma_perip_pat).match
+findall_idents = re.compile(ident_pat).findall
+
+
+class Preprocessor:
+
+    def __init__(self):
+        self.images = []
+        self.predefs = []
+
+    def process(self, file):
+        spath = Path()
+        src = sys.stdin
+        if file:
+            spath = Path(file)
+            src = spath.open()
+        self.out = io.StringIO()
+        self.seen = set()
+        self._prep_stream(src, spath)
+        self._post_preprocess()
+        return (namedtuple('Source', 'source images predefs')
+                (self.out.getvalue(), self.images, self.predefs))
+        # return (self.out.getvalue(), self.images, self.predefs)
+
+    def _prep_stream(self, src, spath):
+        abs = spath.resolve()
+        if abs in self.seen:
+            return
+        self.seen.add(abs)
+        for (lineno, line) in enumerate(src, 1):
+            if lineno == 1 and match_shebang(line):
+                self._emit('// ' + line)
+                continue;
+            m = match_pragma(line)
+            if m:
+                self._prep_pragma(line, spath)
+            else:
+                self._emit(line)
+
+    def _prep_pragma(self, line, spath):
+        m = match_use(line)
+        if m:
+            self._prep_use(line, m, spath)
+        else:
+            m = match_map(line)
+            if m:
+                self._prep_map(line, spath)
+            else:
+                self._emit(line)
+
+    def _prep_use(self, line, m, spath):
+        use_path = spath.parent / m.group('file')
+        with use_path.open() as f:
+            self._prep_stream(f, use_path)
+
+    def _prep_map(self, line, spath):
+        m = match_image(line)
+        if m:
+            var = m.group('var')
+            file = m.group('file')
+            self.images.append(ImageInfo(var=var, file=file, spath=spath))
+        else:
+            m = match_builtin(line)
+            if m:
+                var = m.group('var')
+                predef = self._builtin_to_predef(m.group('builtin'))
+                self.predefs.append(PredefInfo(var=var, predef=predef))
+            else:
+                m = match_perip(line)
+                if m:
+                    var = m.group('var')
+                    pd = PredefInfo(var=var, predef=Predefined.IMU)
+                    self.predefs.append(pd)
+                else:
+                    msg = 'unknown map pragma: {}'.format(line.strip())
+                    raise Exception(msg)
+
+    def _builtin_to_predef(self, builtin):
+        bsp = builtin.split()
+        if bsp == 'RGBA Noise Small'.split():
+            return Predefined.NOISE_SMALL
+        if bsp == 'RGBA Noise Medium'.split():
+            return Predefined.NOISE_MEDIUM
+        if bsp == 'Back Buffer'.split():
+            return Predefined.BACK_BUFFER
+        msg = 'unknown builtin: {}'.format(builtin)
+        raise Exception(msg)
+
+    def _post_preprocess(self):
+        src = self.out.getvalue()
+        idents = set(findall_idents(src))
+        prologue = ''
+        for img in self.images:
+            dcl = 'uniform sampler2D {};\n'.format(img.var)
+            prologue += dcl;
+        for var in predefined_vars:
+            if var.name in idents:
+                size_dcl = '[{}]'.format(var.size) if var.size else ''
+                dcl = 'uniform {} {}{};\n'.format(var.type, var.name, size_dcl)
+                prologue += dcl
+                self.predefs += [PredefInfo(var.name, var.predef)]
+        if 'main' in idents:
+            epilogue = ''
+        elif 'mainImage' in idents:
+            epilogue = image_main_source
+        elif 'mainCube' in idents:
+            epilogue = cube_main_source + image_main_source
+        else:
+            epilogue = ''        # can't guess
+        src = prologue + src + epilogue
+        self.out = io.StringIO(src)
+        self.out.seek(0, io.SEEK_END)
+
+    def _emit(self, line):
+        self.out.write(line)
+
+           
+def load_image(path):
+    img = PIL.Image.open(path)
+    mode = img.mode
+    if mode != 'RGBA':
+        exit('{} has unsupported mode {}'.format(path, mode))
+    a = np.array(img)
+    return (namedtuple
+            ('Image', 'width height data')
+            (img.width, img.height, a.tobytes()))
+
+
+def load(fragment_shader_source, images, predefs):
+    shade.init(LEDS_WIDTH, LEDS_HEIGHT)
+    prog = Prog()
+    prog.attach_shader(ShaderType.VERTEX, vertex_shader_source)
+    prog.attach_shader(ShaderType.FRAGMENT, fragment_shader_source)
+    for img_info in images:
+        img = load_image(img_info.file)
+        prog.attach_image(img_info.var, img.width, img.height, img.data)
+    for pd_info in predefs:
+        prog.attach_predefined(pd_info.var, pd_info.predef)
+    prog.check_okay()
+    return prog
+
+
+def run(prog, duration=None, fps=False):
+    prog.make_current()
+    if duration == None:
+        duration = float('+inf')
+    t0 = time.monotonic()
+    shade.start()
+    while True:
+        now = time.monotonic()
+        time_left = duration - (now - t0)
+        if time_left <= 0:
+            break
+        sleep_time = 1 if fps else 1000
+        if sleep_time > time_left:
+            sleep_time = time_left
+        time.sleep(sleep_time)
+        if fps:
+            print('FPS: {}'.format(shade.fps()))
+    shade.stop()
+            
+
+def shaderbox(file, expand=False, duration=None, fps=False):
+    frag_shader = Preprocessor().process(file)
+    if expand:
+        print(frag_shader.source)
+        exit()
+    prog = load(frag_shader.source, frag_shader.images, frag_shader.predefs)
+    run(prog, duration, fps)
+
+
+def main(argv):
+    parser = ArgumentParser(description='Run GLSL shader on an LED cube.')
+    parser.add_argument('-x', '--expand', action='store_true',
+                        help='expand shader source')
+    parser.add_argument('-f', '--fps', action='store_true',
+                        help='periodically print frame rate')
+    parser.add_argument('-d', '--duration', metavar='T', type=float,
+                        help='exit after T seconds')
+    parser.add_argument('file', nargs='?',
+                        help='GLSL source file')
+    args = parser.parse_args(argv[1:])
+
+    try:
+        shaderbox(args.file,
+                  expand=args.expand,
+                  duration=args.duration, fps=args.fps)
+    except Exception as x:
+        print(x, file=sys.stderr)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
