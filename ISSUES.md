@@ -26,10 +26,6 @@ Should not be part of prog object, should not force non-const for
 Stopped using `pthread_cancel`; modified `check_cancel` to detect
 shutdown and exit thread.
 
-## Cleanup
-
-I think some resources are not released.
-
 ## RESOLVED: Need GIT.
 
 Need git. Depends on naming.

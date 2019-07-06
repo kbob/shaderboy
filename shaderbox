@@ -145,7 +145,6 @@ class Preprocessor:
         self._post_preprocess()
         return (namedtuple('Source', 'source images predefs')
                 (self.out.getvalue(), self.images, self.predefs))
-        # return (self.out.getvalue(), self.images, self.predefs)
 
     def _prep_stream(self, src, spath):
         abs = spath.resolve()
@@ -265,6 +264,9 @@ def load(fragment_shader_source, images, predefs):
     prog.check_okay()
     return prog
 
+def unload():
+    shade.deinit();
+
 
 def run(prog, duration=None, fps=False):
     prog.make_current()
@@ -292,8 +294,10 @@ def shaderbox(file, expand=False, duration=None, fps=False):
         print(frag_shader.source)
         exit()
     prog = load(frag_shader.source, frag_shader.images, frag_shader.predefs)
-    run(prog, duration, fps)
-
+    try:
+        run(prog, duration, fps)
+    finally:
+        unload()
 
 def main(argv):
     parser = ArgumentParser(description='Run GLSL shader on an LED cube.')
@@ -312,9 +316,11 @@ def main(argv):
                   expand=args.expand,
                   duration=args.duration, fps=args.fps)
     except Exception as x:
-        print(x, file=sys.stderr)
+        exit(x)
     except KeyboardInterrupt:
-        print()
+        # This is the only way to get the process's exit status right.
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGINT)
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))

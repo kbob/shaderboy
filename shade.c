@@ -51,18 +51,26 @@ EXPORT void shd_init(int LEDs_width, int LEDs_height)
 
 EXPORT void shd_deinit(void)
 {
-    free(the_info_log);
-    exec_stop(the_exec);
     // XXX destroy all programs
-    destroy_exec(the_exec);
-    deinit_LEDs(the_LEDs);
-    deinit_EGL(the_EGL);
-    deinit_bcm(the_bcm);
+    if (the_exec) {
+        exec_stop(the_exec);
+        destroy_exec(the_exec);
+        the_exec = NULL;
+    }
+    if (the_LEDs) {
+        deinit_LEDs(the_LEDs);
+        the_LEDs = NULL;
+    }
+    if (the_EGL) {
+        deinit_EGL(the_EGL);
+        the_EGL = NULL;
+    }
+    if (the_bcm) {
+        deinit_bcm(the_bcm);
+        the_bcm = NULL;
+    }
+    free(the_info_log);
     the_info_log = NULL;
-    the_exec = NULL;
-    the_LEDs = NULL;
-    the_EGL = NULL;
-    the_bcm = NULL;
 }
 
 EXPORT void shd_start(void)
