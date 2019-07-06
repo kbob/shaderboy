@@ -219,6 +219,9 @@ class Preprocessor:
         for img in self.images:
             dcl = 'uniform sampler2D {};\n'.format(img.var)
             prologue += dcl;
+        for pd in self.predefs:
+            dcl = 'uniform sampler2D {};\n'.format(pd.var)
+            prologue += dcl;
         for var in predefined_vars:
             if var.name in idents:
                 size_dcl = '[{}]'.format(var.size) if var.size else ''
@@ -233,6 +236,8 @@ class Preprocessor:
             epilogue = cube_main_source + image_main_source
         else:
             epilogue = ''        # can't guess
+        if prologue:
+            prologue += '#line 1\n'
         src = prologue + src + epilogue
         self.out = io.StringIO(src)
         self.out.seek(0, io.SEEK_END)

@@ -49,15 +49,18 @@ Implemented noise.
 
 ## RESOLVED: Implement Time
 
-Should implement at least one
+Should implement at least one time variable.
 
 #### Resolution:
 Implemented iTime and iResolution.
 
-# Implement more predefined variables.
+## Implement iTimeDelta.
 
-`iTimeDelta`, `iFrame`, `iMouse`, `iDate`, `iChannel` should be easy.
+## Implement iFrame.
 
+## Implement iDate.
+
+## Implement dummy iMouse.
 
 ## Implement CPU and IRQ affinity
 
@@ -73,3 +76,11 @@ Implemented iTime and iResolution.
 Implemented `shd_fps`.
 
 ## Locks up if run duration less than 0.
+
+
+## Implement iChannelResolution[]
+If the identifier is in the source, then `shaderbox` should insert the
+declaration and add it as a predefined.  If `libshade` sees it as a
+predefined, then it should search its image table for images named
+`iChannel[0-3]` and set the corresponding uniform entries.  Unused
+channels should have dimension 0x0, compatible with Shadertoy.

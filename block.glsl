@@ -17,7 +17,7 @@ mat3 getPT(in vec3 p) {
     s *= sign(dot(p, s));
 
     vec3 q = s.yzx;
-    return mat3(cross(q,s), q, s);
+    return mat3(cross(q, s), q, s);
 }
 
 float axis_to_face(vec3 axis) {
@@ -36,6 +36,7 @@ void mainCube(out vec4 fragColor, in vec3 fragCoord)
     vec2 st26 = vec2((st.x + 0.5 + f) / 6., st.y + 0.5);
     vec4 b = texture2D(alphabet, st26);
     vec3 face_col = abs(PTn[2]);
+    face_col = min(vec3(0.6), face_col); // darken the colored parts.
 
     vec3 col = vec3(1.);
     col -= (1. - face_col) * b.r;
