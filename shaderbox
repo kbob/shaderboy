@@ -257,7 +257,8 @@ def load(fragment_shader_source, images, predefs):
     prog.attach_shader(ShaderType.VERTEX, vertex_shader_source)
     prog.attach_shader(ShaderType.FRAGMENT, fragment_shader_source)
     for img_info in images:
-        img = load_image(img_info.file)
+        img_path = img_info.spath.parent / img_info.file
+        img = load_image(img_path)
         prog.attach_image(img_info.var, img.width, img.height, img.data)
     for pd_info in predefs:
         prog.attach_predefined(pd_info.var, pd_info.predef)
@@ -312,7 +313,8 @@ def main(argv):
                   duration=args.duration, fps=args.fps)
     except Exception as x:
         print(x, file=sys.stderr)
-
+    except KeyboardInterrupt:
+        print()
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
