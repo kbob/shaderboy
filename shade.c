@@ -158,6 +158,10 @@ EXPORT bool shd_prog_attach_predefined(shd_prog       *pp,
         pd = PD_PLAY_TIME;
         break;
 
+    case SHD_PREDEFINED_FRAME:
+        pd = PD_FRAME;
+        break;
+
     case SHD_PREDEFINED_NOISE_SMALL:
         pd = PD_NOISE_SMALL;
         break;

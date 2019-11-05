@@ -34,6 +34,7 @@ struct render_state {
     GLuint           prog;
     GLint            vert_index;
     struct timespec  time_zero;
+    GLint            frame_counter;
     GLenum           active_texture;
     size_t           pd_count;
     pd_map          *pd_map;
@@ -140,6 +141,10 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
                 glUniform1f(index, 0.0);
                 break;
 
+            case PD_FRAME:
+                rs->frame_counter = 0;
+                break;
+
             case PD_NOISE_SMALL:
                 load_texture(rs,
                              index,
@@ -162,6 +167,7 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
         }
     }
     for (size_t i = 0; i < rs->pd_count; i++) {
+        GLint index = rs->pd_map[i].index;
         switch (rs->pd_map[i].value) {
 
         case PD_PLAY_TIME:
@@ -170,8 +176,13 @@ static void update_predefineds(render_state *rs, const prog *pp, bool new_prog)
                 clock_gettime(CLOCK_MONOTONIC, &now);
                 GLfloat t = (now.tv_nsec - rs->time_zero.tv_nsec) / 1.0e9;
                 t += now.tv_sec - rs->time_zero.tv_sec;
-                glUniform1f(rs->pd_map[i].index, t);
+                glUniform1f(index, t);
             }
+            break;
+
+        case PD_FRAME:
+            glUniform1i(index, rs->frame_counter);
+            rs->frame_counter++;
             break;
 
         default:

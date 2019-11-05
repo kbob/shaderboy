@@ -14,6 +14,7 @@ typedef enum shader_type {
 typedef enum predefined {
     PD_RESOLUTION,
     PD_PLAY_TIME,
+    PD_FRAME,
     PD_NOISE_SMALL,
     PD_NOISE_MEDIUM,
 

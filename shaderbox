@@ -96,7 +96,7 @@ predefined_vars = [
     PredefinedVar('iResolution',  Predefined.RESOLUTION,   'vec3',  0),
     PredefinedVar('iTime',        Predefined.PLAY_TIME,    'float', 0),
     # PredefinedVar('iTimeDelta',   Predefined.RENDER_TIME,  'float', 0),
-    # PredefinedVar('iFrame',       Predefined.FRAME,        'float', 0),
+    PredefinedVar('iFrame',       Predefined.FRAME,        'int',   0),
     # PredefinedVar('iChannelTime', Predefined.CHANNEL_TIME, 'float', 4),
     # PredefinedVar('iMouse',       Predefined.MOUSE,        'vec4',  0),
     # PredefinedVar('iDate',        Predefined.DATE,         'vec4',  0),

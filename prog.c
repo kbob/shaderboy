@@ -255,6 +255,11 @@ bool prog_is_okay(const prog *pp, char **info_log)
             expected_size = 1;
             break;
 
+        case PD_FRAME:
+            expected_type = GL_INT;
+            expected_size = 1;
+            break;
+
         case PD_NOISE_SMALL:
             expected_type = GL_SAMPLER_2D;
             expected_size = 1;
@@ -275,8 +280,9 @@ bool prog_is_okay(const prog *pp, char **info_log)
                            expected_type,
                            expected_size,
                            uniform_max_length,
-                           info_log))
+                           info_log)) {
             return false;
+            }
         uniform_bound[index] = true;
     }
 

@@ -32,10 +32,15 @@ libshade.so: $(shade_OFILES)
 	$(LINK.o) -shared -o $@ $^ $(LDLIBS)
 
 clean:
-	rm -f *.o $(TARGETS)
+	rm -f *.o *.pyc $(TARGETS)
 
 install: all shaderbox
 	$(INSTALL) shaderbox $(PREFIX)/bin
 	$(INSTALL) libshade.a $(PREFIX)/lib
 	$(INSTALL) libshade.so $(PREFIX)/lib
         # Linux may require "sudo ldconfig" afterwards.
+
+uninstall:
+	rm -f $(PREFIX)/bin/shaderbox
+	rm -f $(PREFIX)/lib/libshade.a
+	rm -f $(PREFIX)/lib//libshade.so
