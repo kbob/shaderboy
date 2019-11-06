@@ -52,11 +52,14 @@ Implemented noise.
 Should implement at least one time variable.
 
 #### Resolution:
-Implemented iTime and iResolution.
+Implemented `iTime` and `iResolution`.
 
 ## Implement iTimeDelta.
 
-## Implement iFrame.
+## RESOLVED: Implement iFrame.
+
+####Resolution:
+Implemented `iFrame`.
 
 ## Implement iDate.
 

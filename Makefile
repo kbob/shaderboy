@@ -33,6 +33,7 @@ libshade.so: $(shade_OFILES)
 
 clean:
 	rm -f *.o *.pyc $(TARGETS)
+	rm -rf __pycache__
 
 install: all shaderbox
 	$(INSTALL) shaderbox $(PREFIX)/bin

@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+
+import ctypes
+from ctypes import byref, c_char, c_char_p, c_double, c_int, c_void_p, POINTER
+import numpy as np
+import PIL.Image
+import time
+
+vertex_shader_source = '''
+    attribute vec3 vert;
+    
+    void main(void) {
+        gl_Position = vec4(vert, 1.0);
+    }
+'''
+
+fragment_shader_source = '''
+//#pragma map nyanTex=image:../img/nyan.png
+//#pragma map noise=builtin:RGBA Noise Small
+uniform float iTime;
+uniform vec3 iResolution;
+uniform sampler2D nyanTex;
+uniform sampler2D noise;
+
+const float TAIL_STEP_SIZE = 0.05;
+const float TAIL_RADIUS    = 0.2;
+const int   TAIL_NUM_STEPS = 8;
+// #pragma use "../libcube.glsl"
+const float PI = 3.141592;
+const float EPSILON = 0.0001;
+
+// Maps 2D output image space to 3D cube space.
+//
+// The returned coordinates are in the range of (-.5, .5).
+vec3 cube_map_to_3d(vec2 pos) {
+    vec3 p = vec3(0.0);
+    if (pos.x < 128.0) {
+        // top
+        p = vec3(1.0 - pos.y / 128.0,
+                 1.0,
+                 pos.x / 128.0);
+    } else if (pos.x < 256.0) {
+        // back
+        p = vec3(1.0 - pos.y / 128.0,
+                 1.0 - (pos.x - 128.0) / 128.0,
+                 1.0);
+    } else if (pos.x < 384.0) {
+        // bottom
+        p = vec3(1.0 - pos.y / 128.0,
+                 0.0,
+                 1.0 - (pos.x - 256.0) / 128.0);
+    } else if (pos.x < 512.0) {
+        // right
+        p = vec3(1.0,
+                 1.0 - pos.y / 128.0,
+                 1.0 - (pos.x - 384.0) / 128.0);
+    } else if (pos.x < 640.0) {
+        // front
+        p = vec3(1.0 - (pos.x - 512.0) / 128.0,
+                 1.0 - pos.y / 128.0,
+                 0.0);
+    } else if (pos.x < 768.0) {
+        // left
+        p = vec3(0,
+                 1.0 - pos.y / 128.0,
+                 (pos.x - 640.0) / 128.0);
+    }
+    return p - 0.5;
+}
+
+
+mat3 movement(float time) {
+    float ry = time * 0.8;
+    float rz = time * 2.1;
+    mat3 my = mat3(
+         cos(ry), 0.0, sin(ry),
+         0.0,     1.0, 0.0,
+        -sin(ry), 0.0, cos(ry)
+    );
+    mat3 mz = mat3(
+         cos(rz), sin(rz), 0.0,
+        -sin(rz), cos(rz), 0.0,
+         0.0,     0.0,     1.0
+    );
+    return my * mz;
+}
+
+vec4 nyancatTexture(vec2 uv, float time) {
+    uv = clamp(uv, 0.0, 1.0);
+    const float numFrames = 5.0;
+    const float subset = numFrames * 40.0 / 256.0;
+    float idx = mod(floor(12.0 * time + 0.5), numFrames);
+    return texture2D(nyanTex, vec2(
+        subset * (idx + uv.x) / numFrames,
+        uv.y
+    ));
+}
+
+vec4 nyancat(vec3 fragCoord, float time) {
+    vec3 side = fragCoord * movement(time);
+    vec3 p = normalize(side);
+    vec3 n = cross(p, vec3(1.0, 0.0, 0.0));
+    vec2 nyanUV = n.zy * vec2(-1.0, 1.0) * 0.7;
+    return nyancatTexture(nyanUV + .5, iTime) * step(-side.x, 0.0);
+    // return nyancatTexture(nyanUV + .5, 1.0 + 0. * iTime) * step(-side.x, 0.0);
+}
+
+vec4 tail(vec3 fragCoord, float time) {
+    float tailDist = 1000000.;
+    float tailIntensity = 0.0;
+    for (int i = 0; i < TAIL_NUM_STEPS; i++) {
+        vec3 ref = fragCoord * movement(time - float(i) * TAIL_STEP_SIZE);
+        float dist = distance(normalize(ref), vec3(1.0, 0.0, 0.0)) * .6;
+        tailDist = min(tailDist, dist);
+        tailIntensity = min(tailIntensity + step(dist, TAIL_RADIUS), 1.0);
+    }
+    
+    vec3 tailColors[6];
+    tailColors[0] = vec3(1.0, 0.0, 0.0);
+    tailColors[1] = vec3(1.0, 0.6, 0.0);
+    tailColors[2] = vec3(1.0, 1.0, 0.0);
+    tailColors[3] = vec3(0.0, 1.0, 0.0);
+    tailColors[4] = vec3(0.0, 0.5, 0.8);
+    tailColors[5] = vec3(0.6, 0.0, 0.6);
+    int i = int(floor(tailDist * 6.0 / TAIL_RADIUS));
+    vec3 c;
+    if (i == 0) {
+         c = tailColors[0];
+    } else if (i == 1) {
+         c = tailColors[1];
+    } else if (i == 2) {
+         c = tailColors[2];
+    } else if (i == 3) {
+         c = tailColors[3];
+    } else if (i == 4) {
+         c = tailColors[4];
+    } else if (i == 5) {
+         c = tailColors[5];
+    } else {
+         c = vec3(0);
+    }
+    return vec4(c, tailIntensity);
+}
+
+vec4 splarkles(vec3 fragCoord, float time) {
+    const float speed = 2.2 - 2.0;
+    const float thickness = .05;
+    const float radius = .4;
+
+    vec3 color = vec3(0);
+
+    float a = 0.0;
+    for (float i = 0.0; i < 16.0; i++) {
+        float t = time * speed + texture2D(noise, vec2(i / 64., 0.0)).r;
+        float n = mod(t, 1.0);
+
+        vec4 r = (floor(t) + 10.0) * texture2D(noise, vec2(i / 64., 1.0));
+        mat3 mx = mat3(
+            1.0,  0.0,      0.0,
+            0.0,  cos(r.x), sin(r.x),
+            0.0, -sin(r.x), cos(r.x)
+        );
+        mat3 my = mat3(
+             cos(r.y), 0.0, sin(r.y),
+             0.0,      1.0, 0.0,
+            -sin(r.y), 0.0, cos(r.y)
+        );
+        mat3 mz = mat3(
+             cos(r.z), sin(r.z), 0.0,
+            -sin(r.z), cos(r.z), 0.0,
+            0.0,       0.0,      1.0
+        );
+        mat3 motion = mx * my * mz;
+
+        vec3 p = normalize(fragCoord * motion);
+        float dist = 1.0 - distance(vec3(0.0, 0.0, 1.0), p) + n * radius - thickness;
+        vec3 direction = cross(p, vec3(0.0, 0.0, 1.0));
+        float angrad = atan(direction.x, direction.y) / PI;
+
+        a += (1.0 - step(1.0, dist - thickness)) // ring, inner
+            * step(1.0, dist)                  // ring, outer
+            * step(0.5, mod(angrad * 8.0, 1.0)); // line splitting
+    }
+
+    return vec4(1., 1.0, 1.0, clamp(a, 0.0, 1.0));
+}
+
+void mainCube(out vec4 fragColor, in vec3 fragCoord) {
+    vec4 tail = tail(fragCoord, iTime);
+    vec4 nyan = nyancat(fragCoord, iTime);
+    // vec4 splarkles = splarkles(fragCoord, iTime);
+
+    fragColor.rgb = vec3(0x07, 0x26, 0x47) / 255.0;
+    fragColor.rgb = mix(fragColor.rgb, tail.rgb, tail.a);
+    fragColor.rgb = mix(fragColor.rgb, nyan.rgb, nyan.a);
+    // fragColor.rgb = mix(fragColor.rgb, splarkles.rgb, splarkles.a);
+}
+
+#ifndef _EMULATOR
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    mainCube(fragColor, cube_map_to_3d(fragCoord));
+}
+#endif
+
+void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        mainImage(gl_FragColor, gl_FragCoord.xy);
+        gl_FragColor.a = 1.0;
+}
+'''
+
+def load_image(path):
+    img = PIL.Image.open(path)
+    mode = img.mode
+    if mode != 'RGBA':
+        exit('{} has unsupported mode {}'.format(path, mode))
+    a = np.array(img)
+    return (img.width, img.height, a.tobytes())
+
+shade = ctypes.cdll.LoadLibrary('./libshade.so')
+
+use_prog = shade.shd_use_prog
+use_prog.argtypes = (c_void_p, )
+
+create_prog = shade.shd_create_prog
+create_prog.restype = c_void_p
+
+destroy_prog = shade.shd_destroy_prog
+destroy_prog.argtypes = (c_void_p, )
+
+prog_is_okay = shade.shd_prog_is_okay
+prog_is_okay.argtypes = (c_void_p, POINTER(c_char_p))
+
+prog_attach_shader = shade.shd_prog_attach_shader
+prog_attach_shader.argtypes = (c_void_p, c_int, c_char_p)
+
+prog_attach_image = shade.shd_prog_attach_image
+prog_attach_image.argtypes = (c_void_p, c_char_p, c_int, c_int, c_char_p)
+
+prog_attach_predefined = shade.shd_prog_attach_predefined
+prog_attach_predefined.argtypes = (c_void_p, c_char_p, c_int)
+
+fps = shade.shd_fps
+fps.argtypes = ()
+fps.restype = c_double
+
+VERT = c_int.in_dll(shade, 'SHD_SHADER_VERTEX_VALUE')
+FRAG = c_int.in_dll(shade, 'SHD_SHADER_FRAGMENT_VALUE')
+
+RESOLUTION = c_int.in_dll(shade, 'SHD_PREDEFINED_RESOLUTION_VALUE')
+PLAY_TIME = c_int.in_dll(shade, 'SHD_PREDEFINED_PLAY_TIME_VALUE')
+NOISE_SMALL = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_SMALL_VALUE')
+NOISE_MEDIUM = c_int.in_dll(shade, 'SHD_PREDEFINED_NOISE_MEDIUM_VALUE')
+
+LEDS_WIDTH = 6 * 64
+LEDS_HEIGHT = 64
+
+img = load_image('test.png')
+
+shade.shd_init(LEDS_WIDTH, LEDS_HEIGHT)
+
+prog = create_prog()
+prog_attach_shader(prog, VERT, vertex_shader_source.encode('ascii'))
+prog_attach_shader(prog, FRAG, fragment_shader_source.encode('ascii'))
+prog_attach_predefined(prog, b'iResolution', RESOLUTION)
+prog_attach_predefined(prog, b'iTime', PLAY_TIME)
+
+#pragma map nyanTex=image:../img/nyan.png
+#pragma map noise=builtin:RGBA Noise Small
+
+prog_attach_image(prog, b'nyanTex', *load_image('nyan.png'))
+prog_attach_predefined(prog, b'noise', NOISE_SMALL)
+info_log = c_char_p();
+if not shade.shd_prog_is_okay(prog, byref(info_log)):
+    print(info_log.value.decode('ascii'))
+    exit()
+shade.shd_use_prog(prog)
+shade.shd_start()
+
+for i in range(30):
+    try:
+        time.sleep(1)
+        print('FPS: {:.3}'.format(fps()))
+    except KeyboardInterrupt:
+        print()
+        break
+
+shade.shd_stop()
+destroy_prog(prog)
+shade.shd_deinit()
