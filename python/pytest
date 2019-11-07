@@ -107,7 +107,7 @@ shade.shd_use_prog(prog)
 
 shade.shd_start()
 
-for i in range(60):
+for i in range(3):
     try:
         time.sleep(1)
         print('FPS: {:.3}'.format(fps()))
