@@ -33,6 +33,7 @@ Some additional demos are in the `scripts` directory.
 
 Shaderboy has several public APIs: Linux CLI, Python, and C.
 
+
 ## Command line 
 
 At the highest level, the `shaderbox` command renders a fragment
@@ -47,6 +48,16 @@ or
 ```sh
 $ shaderbox myfile.glsl
 ```
+
+or, if you remember Unix,
+
+```sh
+$ head -n 1 myfile.glsl
+#!/usr/bin/env shaderbox
+$ chmod +x myfile.glsl
+$ ./myfille.glsl
+```
+
 
 ## Python API
 
