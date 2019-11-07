@@ -26,7 +26,7 @@ do
 done
 ```
 
-Some additional demos are in the `scripts directory.
+Some additional demos are in the `scripts` directory.
 
 
 # Architecture
