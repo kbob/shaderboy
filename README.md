@@ -8,6 +8,27 @@ Shaderboy draws inspiration from [Shadertoy](https://shadertoy.com)
 and [Shady](https://github.com/polyfloyd/shady).
 
 
+# Installation
+
+```sh
+$ make && sudo make install
+```
+
+# Where's the Eye Candy?
+
+Most of the demos are in the `shaders` directory.
+
+```sh
+cd shaders
+for demo in *.glsl
+do
+    shaderbox --duration=10 $demo
+done
+```
+
+Some additional demos are in the `scripts directory.
+
+
 # Architecture
 
 Shaderboy has several public APIs: Linux CLI, Python, and C.
