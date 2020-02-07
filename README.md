@@ -55,19 +55,19 @@ or, if you remember Unix,
 $ head -n 1 myfile.glsl
 #!/usr/bin/env shaderbox
 $ chmod +x myfile.glsl
-$ ./myfille.glsl
+$ ./myfile.glsl
 ```
 
 
 ## Python API
 
-You can also use shaderboy from Python programs using the `shade`
+You can also use Shaderboy from Python programs using the `shade`
 module.  See the `scripts` subdirectory for examples.
 
 
 ## C API
 
-You can use shaderboy from C programs using the `libshade` library.
+You can use Shaderboy from C programs using the `libshade` library.
 See `c/test/ltest.c` for an example.
 
 
